@@ -46,13 +46,11 @@ public class StreamingService {
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate redisTemplate;
     private final TaskExecutor executor;
-
-    @Value("${app.llm.model}")
-    private String model;
+    private final String model;
 
     public StreamingService(MessageRepositoriy messageRepositoriy, ConversationRepository conversationRepository,
             ConversationService conversationService, RestClient llmRestClient, ObjectMapper objectMapper,
-            StringRedisTemplate redisTemplate, TaskExecutor executor) {
+            StringRedisTemplate redisTemplate, TaskExecutor executor, @Value("${app.llm.model}") String model) {
         this.messageRepositoriy = messageRepositoriy;
         this.conversationRepository = conversationRepository;
         this.conversationService = conversationService;
@@ -60,6 +58,7 @@ public class StreamingService {
         this.objectMapper = objectMapper;
         this.redisTemplate = redisTemplate;
         this.executor = executor;
+        this.model = model;
     }
 
     public SseEmitter stream(UUID userId, UUID convoId, MessageRequest req) {
