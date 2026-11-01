@@ -3,7 +3,6 @@ package com.llmchat.auth.service;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.llmchat.auth.dto.LoginRequest;
 import com.llmchat.auth.dto.LoginResponse;
@@ -38,7 +37,6 @@ public class AuthService {
         userRepository.insertUser(payload.email(), passwordEncoder.encode(payload.password()), payload.displayName());
     }
 
-    @Transactional
     public TokenResponse refresh(RefreshRequest payload) {
         User user = userService.getUserById(tokenService.consumeRefreshToken(payload.refreshToken()));
         String accessToken = tokenService.createAccessToken(user);
