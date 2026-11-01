@@ -4,13 +4,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -20,7 +20,6 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
 import com.llmchat.auth.model.User;
-import com.llmchat.auth.repository.RefreshTokenRepository;
 import com.llmchat.common.MessageKey;
 import com.llmchat.exception.AppException;
 
@@ -29,16 +28,16 @@ public class TokenService {
     private final JwtEncoder jwtEncoder;
     private final Duration accessTtl;
     private final Duration refreshTtl;
-    private final RefreshTokenRepository refreshTokenRepository;
     private final SecureRandom secureRandom = new SecureRandom();
+    private final StringRedisTemplate redis;
 
-    public TokenService(JwtEncoder jwtEncoder, RefreshTokenRepository refreshTokenRepository,
+    public TokenService(JwtEncoder jwtEncoder,
             @Value("${app.jwt.access-ttl}") Duration accessTtl,
-            @Value("${app.jwt.refresh-ttl}") Duration refreshTtl) {
+            @Value("${app.jwt.refresh-ttl}") Duration refreshTtl, StringRedisTemplate redis) {
         this.jwtEncoder = jwtEncoder;
-        this.refreshTokenRepository = refreshTokenRepository;
         this.accessTtl = accessTtl;
         this.refreshTtl = refreshTtl;
+        this.redis = redis;
     }
 
     public long getAccessTtlSeconds() {
@@ -58,19 +57,20 @@ public class TokenService {
         byte[] randomBytes = new byte[32];
         secureRandom.nextBytes(randomBytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
-        refreshTokenRepository.insertRefreshToken(userId, hashToken(token),
-                Timestamp.from(Instant.now().plus(refreshTtl)));
+        redis.opsForValue().set(createRedisKey(token), userId.toString(), refreshTtl);
         return token;
     }
 
     public UUID consumeRefreshToken(String token) {
-        return refreshTokenRepository.consumeRefreshToken(hashToken(token))
-                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_REFRESH_TOKEN));
+        String userId = redis.opsForValue().getAndDelete(createRedisKey(token));
+        if (userId == null) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_REFRESH_TOKEN);
+        }
+        return UUID.fromString(userId);
     }
 
     public void revokeRefreshToken(String token) {
-        String tokenHash = hashToken(token);
-        refreshTokenRepository.consumeRefreshToken(tokenHash);
+        redis.delete(createRedisKey(token));
     }
 
     private String hashToken(String token) {
@@ -83,4 +83,7 @@ public class TokenService {
         }
     }
 
+    private String createRedisKey(String token) {
+        return "refresh_token:" + hashToken(token);
+    }
 }
