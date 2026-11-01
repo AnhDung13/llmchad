@@ -52,6 +52,15 @@
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+		<!-- Flyway: tự chạy các file SQL trong resources/db/migration (V1__, V2__...) khi app khởi động -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
 
 		<!-- Bảo mật: chặn request chưa đăng nhập, PasswordEncoder (BCrypt) để băm mật khẩu -->
 		<dependency>
