@@ -1,40 +1,77 @@
 # llmchat
 
-Ứng dụng chat với LLM, dự án học Java Spring Boot làm backend.
+A chat app for OpenAI-compatible LLMs. Spring Boot API (`apps/api`) and React web client (`apps/web`).
 
+## Prerequisites
+
+- Java 17
+- Node.js 20+
+- Docker (for PostgreSQL and Redis)
+- An API key for an OpenAI-compatible LLM endpoint
+
+## Setup
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Start PostgreSQL and Redis:
+
+   ```bash
+   docker compose up -d
+   ```
+
+   Postgres listens on `5432` (database, user and password all `llmchat`), Redis on `6379`.
+
+3. Configure the API. Copy the example file and fill in the values:
+
+   ```bash
+   cp apps/api/.env.example apps/api/.env
+   ```
+
+   ```properties
+   POSTGRE_URL=jdbc:postgresql://localhost:5432/llmchat
+   POSTGRE_USERNAME=llmchat
+   POSTGRE_PASSWORD=llmchat
+
+   # Base64-encoded, at least 32 bytes: openssl rand -base64 32
+   JWT_SECRET=<generated secret>
+
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
+
+   LLM_BASE_URL=https://api.openai.com/v1
+   LLM_API_KEY=<your key>
+   LLM_MODEL=<model name>
+   ```
+
+4. Configure the web client:
+
+   ```bash
+   cp apps/web/.env.example apps/web/.env.local
+   ```
+
+   `VITE_API_URL` defaults to `http://localhost:8081`. The Vite dev server proxies `/api/*` to it, so no CORS setup is needed.
+
+The database schema is created by Flyway when the API starts.
+
+## Run
+
+```bash
+npm run dev        # API on http://localhost:8081 and web on http://localhost:5173
+npm run dev:api    # API only
+npm run dev:web    # web only
+npm run test:api   # API tests (needs Postgres and Redis running)
+npm run build:web  # production build of the web client
 ```
-llmchat/
-├── apps/
-│   ├── api/    Spring Boot 4 · Java 17 · Spring JDBC (không ORM) · Spring Security + JWT · PostgreSQL
-│   └── web/    React · Vite · TypeScript · Tailwind
-└── docs/
-    └── api-contract.md   ← hợp đồng API giữa web và api
+
+Open http://localhost:5173 and register an account.
+
+To reset the database and Redis data:
+
+```bash
+docker compose down -v
+docker compose up -d
 ```
-
-## Chạy
-
-Cần: Java 17, Node 20+, Docker (chạy `docker compose up -d` để bật PostgreSQL).
-
-```
-npm install                                     # lần đầu
-cp apps/web/.env.example apps/web/.env.local    # lần đầu, nếu chưa có .env.local
-npm run dev          # chạy cả api (http://localhost:8081) và web (http://localhost:5173)
-npm run dev:api      # chỉ chạy Spring Boot
-npm run test:api     # chạy test của Spring Boot
-```
-
-Mở http://localhost:5173. Web gọi `/api/...`, Vite chuyển tiếp sang `VITE_API_URL` (trong `apps/web/.env.local`) nên lúc dev backend không cần CORS.
-
-## Lộ trình backend
-
-| Bước | Việc | Endpoint |
-|---|---|---|
-| 1 | Controller đầu tiên | `GET /api/hello` |
-| 2 | Bảng `users`, đăng ký (BCrypt, JdbcClient) | `POST /api/auth/register` |
-| 3 | Đăng nhập trả JWT, khoá API | `POST /api/auth/login`, `GET /api/me` |
-| 4 | Gọi LLM miễn phí (RestClient) | `POST /api/conversations/{id}/messages` (JSON) |
-| 5 | Lưu hội thoại và tin nhắn | `GET/POST/DELETE /api/conversations...` |
-| 6 | Streaming | Gửi tin nhắn trả về SSE |
-| 7 | Refresh token, đăng xuất | `POST /api/auth/refresh`, `POST /api/auth/logout` |
-
-Chi tiết từng endpoint: [docs/api-contract.md](docs/api-contract.md).
