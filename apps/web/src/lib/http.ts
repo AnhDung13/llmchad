@@ -14,7 +14,7 @@ export { ApiError } from './errors'
  * Lúc dev, Vite chuyển tiếp /api/* sang VITE_API_URL (xem vite.config.ts), nên backend không cần CORS.
  */
 const API_BASE = '/api'
-const BACKEND_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8081'
+const BACKEND_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
 /** Làm mới sớm hơn hạn thật một chút, để token không hết hạn giữa đường. */
 const EXPIRY_SKEW_MS = 30_000
