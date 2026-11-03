@@ -1,4 +1,4 @@
-# API contract — llmchat
+# API contract — llmchad
 
 Đây là "hợp đồng" giữa frontend (`apps/web`) và backend (`apps/api`).
 Frontend đã code theo đúng tài liệu này. Bạn implement backend sao cho khớp,
@@ -27,7 +27,7 @@ một lần rồi gửi lại request. Refresh cũng thất bại thì frontend 
 
 ## Envelope
 
-Mọi response JSON, cả thành công lẫn lỗi, có cùng một dạng (`com.llmchat.common.ApiResponse`):
+Mọi response JSON, cả thành công lẫn lỗi, có cùng một dạng (`com.llmchad.common.ApiResponse`):
 
 ```json
 {
@@ -54,7 +54,7 @@ Ví dụ lỗi:
 Backend **không trả câu chữ viết cứng**. Field `message` chứa một key, frontend dùng i18next dịch sang ngôn ngữ người dùng
 đang chọn (vi/en) rồi hiện bằng toast.
 
-- Danh sách key: `apps/api/src/main/java/com/llmchat/common/MessageKey.java`
+- Danh sách key: `apps/api/src/main/java/com/llmchad/common/MessageKey.java`
 - Bản dịch: `apps/web/src/locales/{vi,en}/server.json` (key `auth.loginSuccess` ↔ `{ "auth": { "loginSuccess": "..." } }`)
 - Thêm key mới thì thêm ở cả ba nơi. Frontend nhận một chuỗi không phải key đã biết thì hiển thị nguyên văn.
 
