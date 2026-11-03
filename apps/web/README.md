@@ -2,7 +2,7 @@
 
 ```
 cp .env.example .env.local   # lần đầu
-npm run dev                  # từ thư mục gốc repo: chạy cả Spring Boot (cổng 8081) và web (cổng 5173)
+npm run dev                  # từ thư mục gốc repo: chạy cả Spring Boot (cổng 8080) và web (cổng 5173)
 ```
 
 | Thư mục / file | Nội dung |
