@@ -60,13 +60,28 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # Tạm thời để thử bằng curl trên VPS. Chỉ bind 127.0.0.1 nên không lộ ra internet.
-    # Có Caddy rồi thì bỏ.
-    ports:
-      - "127.0.0.1:8080:8080"
     restart: unless-stopped
     mem_limit: 1g
+
+  # Đường vào duy nhất từ internet: serve frontend và chuyển /api sang api:8080
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv:ro
+      # Chứng chỉ HTTPS nằm ở đây. Mất volume này thì phải xin lại (Let's Encrypt giới hạn 5 lần/tuần)
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+    mem_limit: 128m
 
 volumes:
   db-data:
   redis-data:
+  caddy-data:
+  caddy-config:
