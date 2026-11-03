@@ -23,7 +23,7 @@ import { ApiError } from './errors'
 export const LANGUAGES = ['vi', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
 
-const KEY = 'llmchat.lang'
+const KEY = 'llmchad.lang'
 
 function initialLanguage(): Language {
   try {

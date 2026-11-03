@@ -124,7 +124,7 @@ function refreshAccessToken(staleToken: string): Promise<string | null> {
 
 /** Khoá dùng chung giữa các tab, để hai tab không làm mới cùng lúc bằng cùng một refresh token. */
 function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
-  return 'locks' in navigator ? navigator.locks.request('llmchat.refresh', fn) : fn()
+  return 'locks' in navigator ? navigator.locks.request('llmchad.refresh', fn) : fn()
 }
 
 async function doRefresh(staleToken: string): Promise<string | null> {

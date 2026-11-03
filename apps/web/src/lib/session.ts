@@ -4,7 +4,7 @@
 
 import type { TokenResponse } from './types'
 
-const KEY = 'llmchat.session'
+const KEY = 'llmchad.session'
 
 export type Session = {
   accessToken: string
