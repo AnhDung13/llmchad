@@ -4,7 +4,7 @@
 Frontend đã code theo đúng tài liệu này. Bạn implement backend sao cho khớp,
 giao diện sẽ chạy mà không phải sửa gì phía web.
 
-- Base URL: `/api`. Khi dev, Vite proxy `/api/*` sang `http://localhost:8081`
+- Base URL: `/api`. Khi dev, Vite proxy `/api/*` sang `http://localhost:8080`
   (xem `apps/web/vite.config.ts`), nên **không cần cấu hình CORS** lúc dev.
 - Body request/response là JSON (`Content-Type: application/json`),
   trừ endpoint stream ở bước 6.

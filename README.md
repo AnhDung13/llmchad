@@ -53,14 +53,14 @@ A chat app for OpenAI-compatible LLMs. Spring Boot API (`apps/api`) and React we
    cp apps/web/.env.example apps/web/.env.local
    ```
 
-   `VITE_API_URL` defaults to `http://localhost:8081`. The Vite dev server proxies `/api/*` to it, so no CORS setup is needed.
+   `VITE_API_URL` defaults to `http://localhost:8080`. The Vite dev server proxies `/api/*` to it, so no CORS setup is needed.
 
 The database schema is created by Flyway when the API starts.
 
 ## Run
 
 ```bash
-npm run dev        # API on http://localhost:8081 and web on http://localhost:5173
+npm run dev        # API on http://localhost:8080 and web on http://localhost:5173
 npm run dev:api    # API only
 npm run dev:web    # web only
 npm run test:api   # API tests (needs Postgres and Redis running)
