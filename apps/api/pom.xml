@@ -12,10 +12,10 @@
 		<relativePath/>
 	</parent>
 
-	<groupId>com.llmchat</groupId>
+	<groupId>com.llmchad</groupId>
 	<artifactId>api</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>llmchat</name>
+	<name>llmchad</name>
 	<description>LLM chat backend</description>
 
 	<properties>
