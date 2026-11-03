@@ -1,11 +1,11 @@
 services:
   db:
     image: postgres:17-alpine
-    container_name: llmchat-db
+    container_name: llmchad-db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-llmchat}
-      POSTGRES_USER: ${POSTGRES_USER:-llmchat}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llmchat}
+      POSTGRES_DB: ${POSTGRES_DB:-llmchad}
+      POSTGRES_USER: ${POSTGRES_USER:-llmchad}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llmchad}
     ports:
       - "5432:5432"
     volumes:
@@ -18,7 +18,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: llmchat-redis
+    container_name: llmchad-redis
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
