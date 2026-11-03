@@ -1,0 +1,72 @@
+# Chạy trên VPS: docker compose -f docker-compose.prod.yml up -d
+# Biến lấy từ file .env cùng thư mục (không commit). Thiếu biến thì compose báo lỗi và dừng.
+services:
+  db:
+    image: postgres:17-alpine
+    command: postgres -c shared_buffers=128MB
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?not_found}
+      POSTGRES_USER: ${POSTGRES_USER:?not_found}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?not_found}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 512m
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?not_found}
+    environment:
+      # redis-cli tự đọc biến này, nên healthcheck không phải ghi mật khẩu ra dòng lệnh
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?not_found}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      # Sai mật khẩu redis-cli vẫn có thể thoát với mã 0, nên kiểm tra nội dung trả về
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 128m
+
+  api:
+    image: llmchad-api
+    environment:
+      # Postgres
+      POSTGRE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:?not_found}
+      POSTGRE_USERNAME: ${POSTGRES_USER:?not_found}
+      POSTGRE_PASSWORD: ${POSTGRES_PASSWORD:?not_found}
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?not_found}
+
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:?not_found}
+
+      # LLM
+      LLM_BASE_URL: ${LLM_BASE_URL:?not_found}
+      LLM_API_KEY: ${LLM_API_KEY:?not_found}
+      LLM_MODEL: ${LLM_MODEL:?not_found}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Tạm thời để thử bằng curl trên VPS. Chỉ bind 127.0.0.1 nên không lộ ra internet.
+    # Có Caddy rồi thì bỏ.
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    mem_limit: 1g
+
+volumes:
+  db-data:
+  redis-data:
