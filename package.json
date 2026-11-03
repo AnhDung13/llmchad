@@ -1,5 +1,5 @@
 {
-  "name": "llmchat",
+  "name": "llmchad",
   "private": true,
   "workspaces": [
     "apps/web"

@@ -1,4 +1,4 @@
-# llmchat
+# llmchad
 
 A chat app for OpenAI-compatible LLMs. Spring Boot API (`apps/api`) and React web client (`apps/web`).
 
@@ -23,7 +23,7 @@ A chat app for OpenAI-compatible LLMs. Spring Boot API (`apps/api`) and React we
    docker compose up -d
    ```
 
-   Postgres listens on `5432` (database, user and password all `llmchat`), Redis on `6379`.
+   Postgres listens on `5432` (database, user and password all `llmchad`), Redis on `6379`.
 
 3. Configure the API. Copy the example file and fill in the values:
 
@@ -32,9 +32,9 @@ A chat app for OpenAI-compatible LLMs. Spring Boot API (`apps/api`) and React we
    ```
 
    ```properties
-   POSTGRE_URL=jdbc:postgresql://localhost:5432/llmchat
-   POSTGRE_USERNAME=llmchat
-   POSTGRE_PASSWORD=llmchat
+   POSTGRE_URL=jdbc:postgresql://localhost:5432/llmchad
+   POSTGRE_USERNAME=llmchad
+   POSTGRE_PASSWORD=llmchad
 
    # Base64-encoded, at least 32 bytes: openssl rand -base64 32
    JWT_SECRET=<generated secret>
