@@ -1,0 +1,24 @@
+# Caddy tự xin và gia hạn chứng chỉ HTTPS (Let's Encrypt), tự chuyển HTTP sang HTTPS.
+llmchad.site {
+	# Giữ nguyên tiền tố /api vì Spring nhận đường dẫn có /api (handle_path sẽ cắt mất)
+	handle /api/* {
+		reverse_proxy api:8080 {
+			# SSE: đẩy từng token xuống trình duyệt ngay, không gom vào bộ đệm
+			flush_interval -1
+		}
+	}
+
+	# Còn lại là frontend: file tĩnh do Vite build, nằm ở ./web trên VPS
+	handle {
+		root * /srv
+		# Chỉ nén file tĩnh, không nén /api để SSE không bị dồn
+		encode zstd gzip
+		# React Router: đường dẫn không có file thật thì trả index.html
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+www.llmchad.site {
+	redir https://llmchad.site{uri} permanent
+}
