@@ -6,7 +6,7 @@
  */
 export class ApiError extends Error {
   readonly status: number
-  /** Tham số nội suy cho key, ví dụ { url } của errors.network */
+  /** Tham số nội suy cho key (nếu key có dùng {{...}}) */
   readonly params?: Record<string, unknown>
   constructor(status: number, message: string, params?: Record<string, unknown>) {
     super(message)

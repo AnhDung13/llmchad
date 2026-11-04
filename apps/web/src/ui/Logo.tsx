@@ -1,10 +1,17 @@
-/** Tên app dạng chữ gradient tím, dùng ở sidebar, header và trang đăng nhập. `className` đặt cỡ chữ, độ đậm */
+import logo from '../assets/logo.png'
+
+/**
+ * Logo kèm tên app dạng chữ gradient tím, dùng ở sidebar, header và trang đăng nhập.
+ * `className` đặt cỡ chữ, độ đậm; logo cao theo cỡ chữ (đơn vị em).
+ * Ảnh gốc độ phân giải cao ở apps/web/brand/logo.png.
+ */
 export function BrandName({ className = 'text-xl font-semibold' }: { className?: string }) {
   return (
-    <span
-      className={`bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 bg-clip-text tracking-tight text-transparent dark:from-violet-400 dark:via-purple-400 dark:to-fuchsia-400 ${className}`}
-    >
-      LLM Chat
+    <span className={`inline-flex items-center gap-[0.35em] ${className}`}>
+      <img src={logo} alt="" className="h-[1.4em] w-[1.4em]" />
+      <span className="bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 bg-clip-text tracking-tight text-transparent dark:from-violet-400 dark:via-purple-400 dark:to-fuchsia-400">
+        LLM Chad
+      </span>
     </span>
   )
 }

@@ -5,7 +5,7 @@
   },
   "errors": {
     "unknown": "Something went wrong",
-    "network": "Cannot reach the backend ({{url}}). Is Spring Boot running?",
+    "network": "The server is having problems, please try again later",
     "sessionExpired": "Your session has expired, please sign in again",
     "streamUnsupported": "This browser cannot read the stream",
     "streamNoDone": "The stream ended without a \"done\" event",
@@ -13,12 +13,12 @@
       "400": "Invalid data",
       "401": "Please sign in",
       "403": "You are not allowed to do this",
-      "404": "Not found (does the backend have this endpoint yet?)",
+      "404": "Not found",
       "409": "Duplicate data",
-      "500": "Server error – check the Spring Boot log",
-      "502": "Backend is down or the LLM call failed",
-      "503": "Backend is down or the LLM call failed",
-      "504": "Backend is down or the LLM call failed",
+      "500": "The server is having problems, please try again later",
+      "502": "The server is having problems, please try again later",
+      "503": "The server is having problems, please try again later",
+      "504": "The server is having problems, please try again later",
       "default": "Error {{status}}"
     }
   }
