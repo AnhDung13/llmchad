@@ -26,7 +26,10 @@ public final class MessageKey {
     public static final String PASSWORD_TOO_SHORT = "validation.passwordTooShort";
     public static final String DISPLAY_NAME_TOO_LONG = "validation.displayNameTooLong";
     public static final String MALFORMED_JSON = "validation.malformedJson";
+    public static final String TYPE_MISSMATCH = "validation.argumentTypeMismatch";
     public static final String TITLE_TOO_LONG = "validation.titleTooLong";
+    public static final String PAGE_INVALID = "validation.pageInvalid";
+    public static final String PAGE_SIZE_INVALID = "validation.pageSizeInvalid";
 
     // Hội thoại, LLM (bước 4–6)
     public static final String CONVERSATION_NOT_FOUND = "conversation.notFound";
