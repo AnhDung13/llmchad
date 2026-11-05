@@ -1,11 +1,12 @@
-name: CI API
+name: PR check
 
 # Chạy cho MỌI PR vào main. Chỉ kiểm tra code, không build image, không deploy.
 #
-# Không dùng `paths:` ở đây vì "API tests" là check bắt buộc trong ruleset: nếu workflow
-# không chạy thì check không bao giờ có kết quả và PR bị treo. Thay vào đó job `changes`
-# xem PR có đụng backend không; không đụng thì job test bị skip, mà job skip vì `if`
-# được GitHub tính là Success.
+# Không dùng `paths:` ở cấp workflow: nếu workflow không chạy thì check bắt buộc trong ruleset
+# không bao giờ có kết quả và PR bị treo. Thay vào đó job `changes` xem PR đụng phần nào,
+# phần không đụng thì job bị skip.
+#
+# Ruleset chỉ cần bắt buộc MỘT check: "PR check" (job cuối, gom kết quả của api + web).
 on:
   pull_request:
     branches:
@@ -19,25 +20,33 @@ permissions:
 
 # Push commit mới lên PR thì huỷ lần chạy cũ của chính PR đó cho đỡ tốn phút
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: pr-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   changes:
-    name: Detect API changes
+    name: Detect changes
     runs-on: ubuntu-latest
     outputs:
       api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
     steps:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # Sửa chính file này thì chạy cả hai để kiểm tra workflow mới
+          # Lockfile nằm ở root (npm workspaces), đổi dependency cũng phải build lại web
           filters: |
             api:
               - 'apps/api/**'
-              - '.github/workflows/ci-api.yml'
+              - '.github/workflows/pr-check.yml'
+            web:
+              - 'apps/web/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/pr-check.yml'
 
-  test:
+  api:
     name: API tests
     needs: changes
     # Chạy tay (workflow_dispatch) thì luôn chạy
@@ -98,3 +107,50 @@ jobs:
           name: surefire-reports
           path: apps/api/target/surefire-reports
           retention-days: 7
+
+  web:
+    name: Web lint & build
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint -w apps/web
+
+      # build = tsc -b && vite build, nên bước này cũng bắt lỗi type
+      - name: Build
+        run: npm run build -w apps/web
+
+  # Check duy nhất cần đặt bắt buộc trong ruleset.
+  # always(): vẫn chạy khi api/web fail hoặc bị skip, để luôn báo kết quả (không có `if` này
+  # thì job sẽ bị skip theo khi api fail, mà skip lại được tính là Success → lọt PR lỗi).
+  pr-check:
+    name: PR check
+    needs: [changes, api, web]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Kết quả: $RESULTS"
+          # success hoặc skipped là qua; failure / cancelled là chặn merge
+          for r in $RESULTS; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              echo "::error::Có job không thành công ($r)"
+              exit 1
+            fi
+          done
