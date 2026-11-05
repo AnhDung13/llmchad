@@ -1,0 +1,83 @@
+name: Deploy Web
+
+# Push lên main có thay đổi ở frontend hoặc dependency (lockfile ở root) thì build và đẩy file tĩnh lên VPS.
+# Không cần restart gì: Caddy mount cả thư mục ./web nên thấy file mới ngay.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/web/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/deploy-web.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Lockfile nằm ở root (npm workspaces) nên cài ở root
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build -w apps/web
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 1
+
+  deploy:
+    name: Deploy to VPS
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+
+      # Secret chỉ đưa vào đúng step cần dùng
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload files to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          # --delete: xoá file cũ của bản build trước (tên file Vite có hash, đổi mỗi lần build)
+          # --delete-after: chỉ xoá sau khi đã chép xong file mới, để người đang mở trang
+          #   với index.html cũ vẫn tải được asset cũ trong lúc deploy
+          rsync -az --delete --delete-after -e "ssh -i $HOME/.ssh/deploy_key" \
+            dist/ "$VPS_USER@$VPS_HOST:llmchad/web/"

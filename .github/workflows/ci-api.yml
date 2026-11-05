@@ -1,0 +1,80 @@
+name: CI API
+
+# Chạy cho PR vào main khi có thay đổi ở backend (hoặc chính file này).
+# Chỉ kiểm tra code, không build image, không deploy.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - apps/api/**
+      - .github/workflows/ci-api.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Push commit mới lên PR thì huỷ lần chạy cũ của chính PR đó cho đỡ tốn phút
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: API tests
+    runs-on: ubuntu-latest
+
+    # Postgres + Redis cho contextLoads và các test @JdbcTest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: llmchad
+          POSTGRES_USER: llmchad
+          POSTGRES_PASSWORD: llmchad
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U llmchad"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    # Giá trị giả, chỉ dùng trong CI
+    env:
+      POSTGRE_URL: jdbc:postgresql://localhost:5432/llmchad
+      POSTGRE_USERNAME: llmchad
+      POSTGRE_PASSWORD: llmchad
+      # SecurityConfig decode bằng Base64, nên secret phải là chuỗi Base64 hợp lệ (>= 32 byte)
+      JWT_SECRET: Y2ktb25seS1zZWNyZXQtYXQtbGVhc3QtMzItY2hhcmFjdGVycy1sb25n
+      LLM_BASE_URL: http://localhost
+      LLM_API_KEY: dummy
+      LLM_MODEL: dummy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Run tests
+        working-directory: apps/api
+        run: ./mvnw test -B
+
+      # Test fail thì tải báo cáo surefire về xem chi tiết (tab Summary của run)
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: apps/api/target/surefire-reports
+          retention-days: 7

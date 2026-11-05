@@ -1,0 +1,46 @@
+name: CI Web
+
+# Chạy cho PR vào main khi có thay đổi ở frontend, dependency (lockfile ở root) hoặc chính file này.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - apps/web/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/ci-web.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Push commit mới lên PR thì huỷ lần chạy cũ của chính PR đó cho đỡ tốn phút
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Web lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Lockfile nằm ở root (npm workspaces) nên cài ở root
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint -w apps/web
+
+      # build = tsc -b && vite build, nên bước này cũng bắt lỗi type
+      - name: Build
+        run: npm run build -w apps/web
