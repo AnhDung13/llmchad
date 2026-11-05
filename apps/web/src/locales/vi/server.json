@@ -15,7 +15,10 @@
     "passwordTooShort": "Mật khẩu phải có ít nhất 8 ký tự",
     "displayNameTooLong": "Tên hiển thị tối đa 50 ký tự",
     "titleTooLong": "Tiêu đề tối đa 200 ký tự",
-    "malformedJson": "Dữ liệu gửi lên không đúng định dạng JSON"
+    "malformedJson": "Dữ liệu gửi lên không đúng định dạng JSON",
+    "argumentTypeMismatch": "Tham số không đúng định dạng",
+    "pageInvalid": "Số trang phải từ 1 trở lên",
+    "pageSizeInvalid": "Số mục mỗi trang phải từ 1 đến 999"
   },
   "conversation": {
     "notFound": "Không tìm thấy cuộc trò chuyện"

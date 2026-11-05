@@ -11,6 +11,7 @@ import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.llmchad.common.ApiResponse;
 import com.llmchad.common.MessageKey;
@@ -24,14 +25,17 @@ public class GlobalExceptionHandler {
         return build(ex.getStatus(), ex.getMessage());
     }
 
-    // @Valid thất bại: trả message key của trường lỗi đầu tiên (đặt trong annotation của DTO,
-    // ví dụ @Size(message = MessageKey.PASSWORD_TOO_SHORT)). Frontend chỉ hiện một thông báo.
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         FieldError fieldError = ex.getBindingResult().getFieldError();
-        String message = fieldError != null && fieldError.getDefaultMessage() != null
-                ? fieldError.getDefaultMessage()
-                : MessageKey.VALIDATION_FAILED;
+        String message;
+        if (fieldError == null || fieldError.getDefaultMessage() == null) {
+            message = MessageKey.VALIDATION_FAILED;
+        } else if (fieldError.isBindingFailure()) {
+            message = MessageKey.TYPE_MISSMATCH;
+        } else {
+            message = fieldError.getDefaultMessage();
+        }
         return build(HttpStatus.BAD_REQUEST, message);
     }
 
@@ -39,6 +43,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotReadable(HttpMessageNotReadableException ex) {
         return build(HttpStatus.BAD_REQUEST, MessageKey.MALFORMED_JSON);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return build(HttpStatus.BAD_REQUEST, MessageKey.TYPE_MISSMATCH);
     }
 
     @ExceptionHandler(Exception.class)

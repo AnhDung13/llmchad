@@ -52,7 +52,8 @@ jobs:
       POSTGRE_URL: jdbc:postgresql://localhost:5432/llmchad
       POSTGRE_USERNAME: llmchad
       POSTGRE_PASSWORD: llmchad
-      JWT_SECRET: ci-only-secret-at-least-32-characters-long
+      # SecurityConfig decode bằng Base64, nên secret phải là chuỗi Base64 hợp lệ (>= 32 byte)
+      JWT_SECRET: Y2ktb25seS1zZWNyZXQtYXQtbGVhc3QtMzItY2hhcmFjdGVycy1sb25n
       LLM_BASE_URL: http://localhost
       LLM_API_KEY: dummy
       LLM_MODEL: dummy

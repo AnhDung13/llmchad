@@ -3,7 +3,9 @@ package com.llmchad.common;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
-public record Paging(@Min(1) @Max(999) Integer size, @Min(1) Integer page) {
+public record Paging(
+        @Min(value = 1, message = MessageKey.PAGE_SIZE_INVALID) @Max(value = 999, message = MessageKey.PAGE_SIZE_INVALID) Integer size,
+        @Min(value = 1, message = MessageKey.PAGE_INVALID) Integer page) {
     public Paging {
         if (size == null)
             size = 20;
