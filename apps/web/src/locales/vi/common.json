@@ -5,7 +5,7 @@
   },
   "errors": {
     "unknown": "Có lỗi xảy ra",
-    "network": "Không kết nối được tới backend ({{url}}). Spring Boot đã chạy chưa?",
+    "network": "Máy chủ xảy ra sự cố, vui lòng thử lại sau",
     "sessionExpired": "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại",
     "streamUnsupported": "Trình duyệt không đọc được stream",
     "streamNoDone": "Stream kết thúc mà không có event \"done\"",
@@ -13,12 +13,12 @@
       "400": "Dữ liệu không hợp lệ",
       "401": "Bạn cần đăng nhập",
       "403": "Bạn không có quyền làm việc này",
-      "404": "Không tìm thấy (backend đã có endpoint này chưa?)",
+      "404": "Không tìm thấy",
       "409": "Dữ liệu bị trùng",
-      "500": "Lỗi server – xem log của Spring Boot",
-      "502": "Backend chưa chạy hoặc gọi LLM thất bại",
-      "503": "Backend chưa chạy hoặc gọi LLM thất bại",
-      "504": "Backend chưa chạy hoặc gọi LLM thất bại",
+      "500": "Máy chủ xảy ra sự cố, vui lòng thử lại sau",
+      "502": "Máy chủ xảy ra sự cố, vui lòng thử lại sau",
+      "503": "Máy chủ xảy ra sự cố, vui lòng thử lại sau",
+      "504": "Máy chủ xảy ra sự cố, vui lòng thử lại sau",
       "default": "Lỗi {{status}}"
     }
   }

@@ -20,7 +20,7 @@
   --color-night-600: #4b465a;
 }
 
-/* Gradient của logo "LLM Chat", dùng cho nút chính (nút gửi, nút Lưu...) */
+/* Gradient của chữ "LLM Chad", dùng cho nút chính (nút gửi, nút Lưu...) */
 @utility bg-brand {
   background-image: linear-gradient(to right, var(--color-violet-600), var(--color-purple-500), var(--color-fuchsia-500));
 }

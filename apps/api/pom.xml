@@ -16,7 +16,7 @@
 	<artifactId>api</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>llmchad</name>
-	<description>LLM chat backend</description>
+	<description>LLM Chad backend</description>
 
 	<properties>
 		<java.version>17</java.version>
