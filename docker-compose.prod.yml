@@ -36,7 +36,8 @@ services:
     mem_limit: 128m
 
   api:
-    image: llmchad-api
+    # Image do GitHub Actions build và đẩy lên (xem .github/workflows/deploy.yml)
+    image: ghcr.io/anhdung13/llmchad-api:latest
     environment:
       # Postgres
       POSTGRE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:?not_found}

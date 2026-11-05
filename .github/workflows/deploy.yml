@@ -1,0 +1,179 @@
+name: Deploy Prod
+
+on:
+  push:
+    branches:
+      - main
+  # Nút "Run workflow" trên tab Actions để chạy tay
+  workflow_dispatch:
+
+# Mặc định chỉ đọc code; job nào cần thêm quyền thì tự khai báo
+permissions:
+  contents: read
+
+# Hai lần push sát nhau thì xếp hàng chạy lần lượt, không huỷ lần deploy đang chạy dở
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  API_IMAGE: ghcr.io/anhdung13/llmchad-api
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    # Postgres + Redis chạy kèm job để test contextLoads khởi động được Spring
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: llmchad
+          POSTGRES_USER: llmchad
+          POSTGRES_PASSWORD: llmchad
+        ports:
+          - 5432:5432
+        # Chờ DB sẵn sàng rồi mới chạy step
+        options: >-
+          --health-cmd "pg_isready -U llmchad"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    # Giá trị giả, chỉ dùng trong CI
+    env:
+      POSTGRE_URL: jdbc:postgresql://localhost:5432/llmchad
+      POSTGRE_USERNAME: llmchad
+      POSTGRE_PASSWORD: llmchad
+      JWT_SECRET: ci-only-secret-at-least-32-characters-long
+      LLM_BASE_URL: http://localhost
+      LLM_API_KEY: dummy
+      LLM_MODEL: dummy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Run tests
+        working-directory: apps/api
+        run: ./mvnw test -B
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Tag latest để compose kéo về; tag theo commit để rollback khi cần
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:latest
+            ${{ env.API_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build frontend ra file tĩnh, chuyển sang job deploy qua artifact
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Lockfile nằm ở root (npm workspaces) nên cài ở root
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build -w apps/web
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 1
+
+  # Chỉ chạy khi cả api và web đều thành công
+  deploy:
+    needs: [api, web]
+    runs-on: ubuntu-latest
+    steps:
+      # Lấy Caddyfile và docker-compose.prod.yml
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+
+      # Secret chỉ đưa vào đúng step cần dùng
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload files to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          SSH="ssh -i $HOME/.ssh/deploy_key"
+          # --delete: xoá file cũ của bản build trước (tên file Vite có hash, đổi mỗi lần build)
+          rsync -az --delete -e "$SSH" dist/ "$VPS_USER@$VPS_HOST:llmchad/web/"
+          # --inplace: ghi đè lên chính file cũ. Caddyfile được mount từng file vào container;
+          # nếu rsync tạo file mới rồi đổi tên thì container vẫn thấy bản cũ
+          rsync -az --inplace -e "$SSH" Caddyfile docker-compose.prod.yml "$VPS_USER@$VPS_HOST:llmchad/"
+
+      - name: Restart stack
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash -s <<'EOF'
+          set -euo pipefail
+          cd ~/llmchad
+          export COMPOSE_FILE=docker-compose.prod.yml
+          docker compose pull api
+          docker compose up -d --remove-orphans
+          # up -d không khởi động lại caddy nếu chỉ Caddyfile thay đổi, nên reload thủ công
+          docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+          # Xoá image cũ không còn dùng để khỏi đầy ổ cứng
+          docker image prune -f
+          EOF
