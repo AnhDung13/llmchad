@@ -1,19 +1,17 @@
 name: CI Web
 
-# Chạy cho PR vào main khi có thay đổi ở frontend, dependency (lockfile ở root) hoặc chính file này.
+# Chạy cho MỌI PR vào main. Không dùng `paths:` vì "Web lint & build" là check bắt buộc
+# trong ruleset (giải thích ở ci-api.yml): job `changes` quyết định có build hay skip.
 on:
   pull_request:
     branches:
       - main
-    paths:
-      - apps/web/**
-      - package.json
-      - package-lock.json
-      - .github/workflows/ci-web.yml
   workflow_dispatch:
 
 permissions:
   contents: read
+  # paths-filter đọc danh sách file thay đổi của PR qua API
+  pull-requests: read
 
 # Push commit mới lên PR thì huỷ lần chạy cũ của chính PR đó cho đỡ tốn phút
 concurrency:
@@ -21,8 +19,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect web changes
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Lockfile nằm ở root (npm workspaces), đổi dependency cũng phải build lại
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/ci-web.yml'
+
   build:
     name: Web lint & build
+    needs: changes
+    # Chạy tay (workflow_dispatch) thì luôn chạy
+    if: needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

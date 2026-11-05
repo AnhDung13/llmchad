@@ -1,18 +1,21 @@
 name: CI API
 
-# Chạy cho PR vào main khi có thay đổi ở backend (hoặc chính file này).
-# Chỉ kiểm tra code, không build image, không deploy.
+# Chạy cho MỌI PR vào main. Chỉ kiểm tra code, không build image, không deploy.
+#
+# Không dùng `paths:` ở đây vì "API tests" là check bắt buộc trong ruleset: nếu workflow
+# không chạy thì check không bao giờ có kết quả và PR bị treo. Thay vào đó job `changes`
+# xem PR có đụng backend không; không đụng thì job test bị skip, mà job skip vì `if`
+# được GitHub tính là Success.
 on:
   pull_request:
     branches:
       - main
-    paths:
-      - apps/api/**
-      - .github/workflows/ci-api.yml
   workflow_dispatch:
 
 permissions:
   contents: read
+  # paths-filter đọc danh sách file thay đổi của PR qua API
+  pull-requests: read
 
 # Push commit mới lên PR thì huỷ lần chạy cũ của chính PR đó cho đỡ tốn phút
 concurrency:
@@ -20,8 +23,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect API changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+              - '.github/workflows/ci-api.yml'
+
   test:
     name: API tests
+    needs: changes
+    # Chạy tay (workflow_dispatch) thì luôn chạy
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     # Postgres + Redis cho contextLoads và các test @JdbcTest
