@@ -31,16 +31,19 @@ public class UserRepository {
                 .optional();
     }
 
-    public void insertUser(String email, String passwordHash, String displayName) {
+    // RETURNING: lấy luôn user vừa tạo (id, created_at do DB sinh), không phải SELECT thêm lần nữa
+    public User insertUser(String email, String passwordHash, String displayName) {
         String sql = """
                 INSERT INTO users (email, password_hash, display_name)
                 VALUES (:email, :passwordHash, :displayName)
+                RETURNING id, email, display_name, created_at
                 """;
-        jdbcClient.sql(sql)
+        return jdbcClient.sql(sql)
                 .param("email", email)
                 .param("passwordHash", passwordHash)
-                .param("displayName", displayName).update();
-
+                .param("displayName", displayName)
+                .query(UserRepository::mapRow)
+                .single();
     }
 
     public Optional<User> findById(UUID id) {

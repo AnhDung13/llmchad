@@ -12,6 +12,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DuplicateKeyException;
 
+import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 
 /**
@@ -39,6 +40,18 @@ class UserRepositoryTest {
         userRepository.insertUser(email, "hash", "An");
 
         assertThat(userRepository.existEmail(email)).isTrue();
+    }
+
+    @Test
+    void insertUser_returnsCreatedUser() {
+        String email = randomEmail();
+
+        User created = userRepository.insertUser(email, "hash", "An");
+
+        assertThat(created.id()).isNotNull();
+        assertThat(created.email()).isEqualTo(email);
+        assertThat(created.displayName()).isEqualTo("An");
+        assertThat(created.createdAt()).isNotNull();
     }
 
     @Test

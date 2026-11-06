@@ -1,12 +1,23 @@
 {
   "auth": {
     "loginSuccess": "Signed in successfully",
-    "registerSuccess": "Account created",
+    "registerSuccess": "We sent a verification code to your email",
     "logoutSuccess": "Signed out",
     "emailAlreadyExists": "This email is already registered",
     "invalidCredentials": "Incorrect email or password",
     "invalidRefreshToken": "Your session is invalid or has expired",
-    "unauthorized": "Please sign in"
+    "unauthorized": "Please sign in",
+    "emailVerified": "Email verified",
+    "verificationSent": "A new verification code has been sent",
+    "tooManyRequests": "Too many requests, please try again in a minute",
+    "invalidOAuthCode": "Your sign-in session expired, please try again",
+    "oauthFailed": "Signing in with the external account failed",
+    "oauthEmailUnverified": "This account has no verified email",
+    "invalidVerifyCode": "Incorrect verification code",
+    "verificationExpired": "Your sign-up session has expired, please sign up again",
+    "verifyAttemptsExceeded": "Too many wrong attempts, please sign up again",
+    "sendMailFailed": "Couldn't send the email, please try again later",
+    "verifyCodeExpired": "The verification code has expired, please request a new one"
   },
   "validation": {
     "failed": "Invalid data",

@@ -3,16 +3,38 @@
 import type { Options } from 'ky'
 import { ApiError, envelope, json, readBody, request } from './http'
 import { readSse } from './sse'
-import type { ChatEvent, Conversation, LoginInput, LoginResponse, Message, RegisterInput, User } from './types'
+import type {
+  ChatEvent,
+  Conversation,
+  LoginInput,
+  LoginResponse,
+  Message,
+  RegisterInput,
+  User,
+  VerificationCodeResponse,
+} from './types'
 
 const post = (body: unknown): Options => ({ method: 'post', json: body })
 
 export const api = {
   /** Trả cả envelope để đọc `message` (vd "auth.registerSuccess") */
-  register: (input: RegisterInput) => envelope<User>('auth/register', post(input), { auth: false }),
+  register: (input: RegisterInput) =>
+    envelope<VerificationCodeResponse>('auth/register', post(input), { auth: false }),
 
   /** Trả cả envelope để đọc `message` (vd "auth.loginSuccess") */
   login: (input: LoginInput) => envelope<LoginResponse>('auth/login', post(input), { auth: false }),
+
+  /** Đổi mã dùng 1 lần (backend gắn vào /oauth/callback?code=...) lấy token, giống hệt login */
+  exchangeOAuthCode: (code: string) =>
+    envelope<LoginResponse>('auth/oauth/exchange', post({ code }), { auth: false }),
+
+  /** Mã 6 ký tự trong email. Đúng mã thì backend tạo tài khoản và đăng nhập luôn (response như login) */
+  /** `password` là mật khẩu vừa nhập ở form đăng ký: backend kiểm tra để không ai đăng ký đè được */
+  verifyEmail: (email: string, password: string, code: string) =>
+    envelope<LoginResponse>('auth/verify-email', post({ email, password, code }), { auth: false }),
+
+  resendVerification: (email: string) =>
+    envelope<VerificationCodeResponse>('auth/resend-verification', post({ email }), { auth: false }),
 
   /** Thu hồi refresh token ở backend */
   logout: async (refreshToken: string) => {

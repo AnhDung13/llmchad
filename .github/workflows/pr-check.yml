@@ -83,6 +83,9 @@ jobs:
       LLM_BASE_URL: http://localhost
       LLM_API_KEY: dummy
       LLM_MODEL: dummy
+      # Test không gửi mail thật (EmailService bị mock), chỉ cần có giá trị để Spring khởi động được
+      VALIDATION_MAIL: ci@example.com
+      VALIDATION_PWD: dummy
 
     steps:
       - name: Checkout code

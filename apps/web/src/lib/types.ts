@@ -54,5 +54,16 @@ export type ChatEvent =
   | { type: 'delta'; text: string }
   | { type: 'done'; message: Message }
 
+/** Trả về từ POST /api/auth/register và /resend-verification, dùng để đếm ngược */
+export type VerificationCodeResponse = {
+  /** Số giây mã còn hiệu lực */
+  expiresIn: number
+  /** Số giây phải chờ trước khi được gửi lại mã */
+  resendAfter: number
+}
+
 export type RegisterInput = { email: string; password: string; displayName: string }
 export type LoginInput = { email: string; password: string }
+
+/** registrationId của Spring Security, cũng là đoạn cuối URL /api/oauth2/authorization/{provider} */
+export type OAuthProvider = 'google' | 'github'

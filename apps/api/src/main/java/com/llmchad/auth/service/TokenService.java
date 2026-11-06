@@ -1,8 +1,5 @@
 package com.llmchad.auth.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
@@ -20,6 +17,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
 import com.llmchad.auth.model.User;
+import com.llmchad.common.HashUtils;
 import com.llmchad.common.MessageKey;
 import com.llmchad.exception.AppException;
 
@@ -73,17 +71,7 @@ public class TokenService {
         redis.delete(createRedisKey(token));
     }
 
-    private String hashToken(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashedBytes = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(hashedBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
     private String createRedisKey(String token) {
-        return "refresh_token:" + hashToken(token);
+        return "refresh_token:" + HashUtils.sha256(token);
     }
 }

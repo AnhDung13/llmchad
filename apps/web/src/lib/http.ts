@@ -4,6 +4,7 @@
 
 import ky, { isHTTPError, isNetworkError, isTimeoutError, type KyRequest, type Options } from 'ky'
 import { ApiError } from './errors'
+import i18n from './i18n'
 import { clearSession, getSession, saveSession } from './session'
 import type { ApiEnvelope, TokenResponse } from './types'
 
@@ -46,6 +47,8 @@ const client = ky.create({
   hooks: {
     beforeRequest: [
       async ({ request, options }) => {
+        // Backend dùng ngôn ngữ đang chọn để viết email (vd mail mã xác minh), không theo ngôn ngữ trình duyệt
+        request.headers.set('Accept-Language', i18n.language)
         const ctx = options.context as RequestContext
         if (ctx.auth === false) return
         const token = ctx.token ?? (await getFreshAccessToken())
