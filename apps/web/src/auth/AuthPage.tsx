@@ -12,6 +12,9 @@ import { useAuth } from './context'
 
 type Mode = 'login' | 'register'
 
+/** Message key backend có thể gắn vào /login?oauthError=... (OAuthLoginSuccessHandler, OAuthLoginFailureHandler) */
+const OAUTH_ERROR_KEYS = new Set(['auth.oauthFailed', 'auth.oauthEmailUnverified'])
+
 export function AuthPage({ mode }: { mode: Mode }) {
   const { user, login, register } = useAuth()
   const navigate = useNavigate()
@@ -29,7 +32,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const oauthError = searchParams.get('oauthError')
   useEffect(() => {
     if (!oauthError) return
-    toast.error(translateMessage(oauthError))
+    // Chỉ dịch key mình biết: ai cũng tạo được link ?oauthError=<câu tuỳ ý>, không được hiện nguyên văn thành toast
+    toast.error(translateMessage(OAUTH_ERROR_KEYS.has(oauthError) ? oauthError : 'auth.oauthFailed'))
     setSearchParams({}, { replace: true })
   }, [oauthError, setSearchParams])
 
@@ -86,7 +90,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
-              maxLength={50}
+              maxLength={256}
               autoComplete="name"
               autoFocus
             />
@@ -186,7 +190,7 @@ function Field({ icon, trailing, children }: { icon: ReactNode; trailing?: React
 }
 
 /** Bật khi backend có OAuth (docs/api-contract.md → Bước 9). Chưa có mà bấm thì chỉ ra trang lỗi 401. */
-const OAUTH_ENABLED = false
+const OAUTH_ENABLED = true
 
 /** Chuyển cả trang sang backend (không dùng fetch): backend redirect tiếp sang Google/GitHub */
 function OAuthButton({ provider, icon, label }: { provider: OAuthProvider; icon: ReactNode; label: string }) {

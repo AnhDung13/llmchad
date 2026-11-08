@@ -24,7 +24,7 @@
     "required": "Vui lòng nhập đầy đủ thông tin",
     "emailInvalid": "Email không hợp lệ",
     "passwordTooShort": "Mật khẩu phải có ít nhất 8 ký tự",
-    "displayNameTooLong": "Tên hiển thị tối đa 50 ký tự",
+    "displayNameTooLong": "Tên hiển thị tối đa 256 ký tự",
     "titleTooLong": "Tiêu đề tối đa 200 ký tự",
     "malformedJson": "Dữ liệu gửi lên không đúng định dạng JSON",
     "argumentTypeMismatch": "Tham số không đúng định dạng",

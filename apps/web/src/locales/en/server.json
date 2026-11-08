@@ -24,7 +24,7 @@
     "required": "Please fill in all required fields",
     "emailInvalid": "Invalid email address",
     "passwordTooShort": "Password must be at least 8 characters",
-    "displayNameTooLong": "Display name must be at most 50 characters",
+    "displayNameTooLong": "Display name must be at most 256 characters",
     "titleTooLong": "Title must be at most 200 characters",
     "malformedJson": "Request body is not valid JSON",
     "argumentTypeMismatch": "A parameter has an invalid format",
