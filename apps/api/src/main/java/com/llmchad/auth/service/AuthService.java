@@ -4,8 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -23,8 +23,10 @@ import com.llmchad.auth.dto.VerificationCodeResponse;
 import com.llmchad.auth.dto.VerifyEmailRequest;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
+import com.llmchad.auth.oauth2.OAuthLoginService;
 import com.llmchad.auth.repository.UserRepository;
 import com.llmchad.common.EmailService;
+import com.llmchad.common.EmailUtils;
 import com.llmchad.common.HashUtils;
 import com.llmchad.common.MessageKey;
 import com.llmchad.common.RandomCode;
@@ -38,15 +40,18 @@ public class AuthService {
     private final TokenService tokenService;
     private final EmailService emailService;
     private final StringRedisTemplate redis;
+    private final OAuthLoginService oauthLoginService;
 
     public AuthService(UserRepository userRepository, UserService userService, PasswordEncoder passwordEncoder,
-            TokenService tokenService, EmailService emailService, StringRedisTemplate redis) {
+            TokenService tokenService, EmailService emailService, StringRedisTemplate redis,
+            OAuthLoginService oauthLoginService) {
         this.userRepository = userRepository;
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
         this.emailService = emailService;
         this.redis = redis;
+        this.oauthLoginService = oauthLoginService;
     }
 
     private static final String PENDING_KEY_PREFIX = "pending_register:";
@@ -58,7 +63,7 @@ public class AuthService {
     private static final int VERIFY_CODE_LENGTH = 6;
 
     public VerificationCodeResponse register(RegisterRequest payload) {
-        String email = normalizeEmail(payload.email());
+        String email = EmailUtils.normalize(payload.email());
         if (userRepository.existEmail(email)) {
             throw new AppException(HttpStatus.CONFLICT, MessageKey.EMAIL_ALREADY_EXISTS);
         }
@@ -77,7 +82,7 @@ public class AuthService {
     }
 
     public LoginResponse verifyEmail(VerifyEmailRequest payload) {
-        String email = normalizeEmail(payload.email());
+        String email = EmailUtils.normalize(payload.email());
         String pendingKey = PENDING_KEY_PREFIX + email;
         Map<Object, Object> pending = redis.opsForHash().entries(pendingKey);
         String passwordHash = (String) pending.get("passwordHash");
@@ -122,7 +127,7 @@ public class AuthService {
     }
 
     public VerificationCodeResponse resendVerificationCode(ResendVerificationRequest payload) {
-        String email = normalizeEmail(payload.email());
+        String email = EmailUtils.normalize(payload.email());
         String pendingKey = PENDING_KEY_PREFIX + email;
         if (!Boolean.TRUE.equals(redis.hasKey(pendingKey))) {
             throw new AppException(HttpStatus.NOT_FOUND, MessageKey.VERIFICATION_EXPIRED);
@@ -135,6 +140,28 @@ public class AuthService {
                 Map.of("codeHash", HashUtils.sha256(code), "attempts", "0", "codeExpiresAt", codeExpiresAt()));
         redis.expire(pendingKey, PENDING_TTL);
         return codeSent();
+    }
+
+    public TokenResponse refresh(RefreshRequest payload) {
+        User user = userService.getUserById(tokenService.consumeRefreshToken(payload.refreshToken()));
+        String accessToken = tokenService.createAccessToken(user);
+        String refreshToken = tokenService.createRefreshToken(user.id());
+        return new TokenResponse(accessToken, "Bearer", tokenService.getAccessTtlSeconds(), refreshToken);
+    }
+
+    public LoginResponse login(LoginRequest payload) {
+        UserCredentials userCredentials = userRepository.findCredentialsByEmail(EmailUtils.normalize(payload.email()))
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_CREDENTIALS));
+
+        if (userCredentials.passwordHash() == null
+                || !passwordEncoder.matches(payload.password(), userCredentials.passwordHash())) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_CREDENTIALS);
+        }
+        return issueTokens(userCredentials.user());
+    }
+
+    public void logout(String token) {
+        tokenService.revokeRefreshToken(token);
     }
 
     private void sendCode(String email, String code) {
@@ -161,35 +188,19 @@ public class AuthService {
         }
     }
 
-    private static String normalizeEmail(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
-    }
-
-    public TokenResponse refresh(RefreshRequest payload) {
-        User user = userService.getUserById(tokenService.consumeRefreshToken(payload.refreshToken()));
-        String accessToken = tokenService.createAccessToken(user);
-        String refreshToken = tokenService.createRefreshToken(user.id());
-        return new TokenResponse(accessToken, "Bearer", tokenService.getAccessTtlSeconds(), refreshToken);
-    }
-
-    public LoginResponse login(LoginRequest payload) {
-        UserCredentials userCredentials = userRepository.findCredentialsByEmail(normalizeEmail(payload.email()))
-                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_CREDENTIALS));
-
-        if (userCredentials.passwordHash() == null
-                || !passwordEncoder.matches(payload.password(), userCredentials.passwordHash())) {
-            throw new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_CREDENTIALS);
-        }
-        return issueTokens(userCredentials.user());
+    /**
+     * Đổi mã dùng 1 lần (OAuthLoginSuccessHandler tạo, sống 1 phút) lấy token,
+     * giống hệt /login
+     */
+    public LoginResponse loginWithOAuthCode(String code, String nonce) {
+        UUID userId = oauthLoginService.consumeLoginCode(code, nonce)
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_OAUTH_CODE));
+        return issueTokens(userService.getUserById(userId));
     }
 
     private LoginResponse issueTokens(User user) {
         String accessToken = tokenService.createAccessToken(user);
         String refreshToken = tokenService.createRefreshToken(user.id());
         return new LoginResponse(accessToken, "Bearer", tokenService.getAccessTtlSeconds(), refreshToken, user);
-    }
-
-    public void logout(String token) {
-        tokenService.revokeRefreshToken(token);
     }
 }

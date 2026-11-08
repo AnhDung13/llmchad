@@ -86,6 +86,11 @@ jobs:
       # Test không gửi mail thật (EmailService bị mock), chỉ cần có giá trị để Spring khởi động được
       VALIDATION_MAIL: ci@example.com
       VALIDATION_PWD: dummy
+      # OAuth: chỉ cần có giá trị để Spring dựng ClientRegistration, test không gọi Google/GitHub thật
+      GOOGLE_CLIENT_ID: dummy
+      GOOGLE_CLIENT_SECRET: dummy
+      GITHUB_CLIENT_ID: dummy
+      GITHUB_CLIENT_SECRET: dummy
 
     steps:
       - name: Checkout code

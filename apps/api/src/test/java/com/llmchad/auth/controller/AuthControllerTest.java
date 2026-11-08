@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,6 +31,8 @@ import com.llmchad.auth.service.AuthService;
 import com.llmchad.common.MessageKey;
 import com.llmchad.config.SecurityConfig;
 import com.llmchad.exception.AppException;
+
+import jakarta.servlet.http.Cookie;
 
 /**
  * @WebMvcTest chỉ dựng tầng web: controller, @RestControllerAdvice, WebConfig
@@ -136,7 +139,7 @@ class AuthControllerTest {
         void register_displayNameTooLong_returns400() throws Exception {
                 postJson("/api/auth/register", """
                                 {"email": "an@example.com", "password": "password123", "displayName": "%s"}
-                                """.formatted("a".repeat(51)))
+                                """.formatted("a".repeat(257)))
                                 .andExpect(status().isBadRequest())
                                 .andExpect(jsonPath("$.message").value(MessageKey.DISPLAY_NAME_TOO_LONG));
         }
@@ -171,5 +174,51 @@ class AuthControllerTest {
                                 """)
                                 .andExpect(status().isNoContent());
                 verify(authService).logout("refresh");
+        }
+
+        // ---------- oauth/exchange ----------
+
+        @Test
+        void oauthExchange_validCodeWithCookie_returns200AndClearsCookie() throws Exception {
+                User user = new User(UUID.randomUUID(), "an@example.com", "An", Instant.now());
+                when(authService.loginWithOAuthCode("one-time-code", "nonce"))
+                                .thenReturn(new LoginResponse("access", "Bearer", 900, "refresh", user));
+
+                // Không có header Authorization: endpoint nằm trong permitAll
+                mockMvc.perform(post("/api/auth/oauth/exchange").contentType(MediaType.APPLICATION_JSON)
+                                .cookie(new Cookie("oauth_login_nonce", "nonce"))
+                                .content("""
+                                                {"code": "one-time-code"}
+                                                """))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.message").value(MessageKey.LOGIN_SUCCESS))
+                                .andExpect(jsonPath("$.data.accessToken").value("access"))
+                                .andExpect(header().string("Set-Cookie",
+                                                org.hamcrest.Matchers.containsString("oauth_login_nonce=;")))
+                                .andExpect(header().string("Set-Cookie",
+                                                org.hamcrest.Matchers.containsString("Max-Age=0")));
+        }
+
+        @Test
+        void oauthExchange_withoutCookie_passesNullNonce_returns401() throws Exception {
+                // Trình duyệt khác (login CSRF) không có cookie → service nhận nonce null → mã không hợp lệ
+                when(authService.loginWithOAuthCode("one-time-code", null))
+                                .thenThrow(new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_OAUTH_CODE));
+
+                postJson("/api/auth/oauth/exchange", """
+                                {"code": "one-time-code"}
+                                """)
+                                .andExpect(status().isUnauthorized())
+                                .andExpect(jsonPath("$.message").value(MessageKey.INVALID_OAUTH_CODE));
+        }
+
+        @Test
+        void oauthExchange_blankCode_returns400() throws Exception {
+                postJson("/api/auth/oauth/exchange", """
+                                {"code": ""}
+                                """)
+                                .andExpect(status().isBadRequest())
+                                .andExpect(jsonPath("$.message").value(MessageKey.FIELD_REQUIRED));
+                verifyNoInteractions(authService);
         }
 }

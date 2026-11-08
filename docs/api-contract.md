@@ -84,7 +84,7 @@ Backend **không trả câu chữ viết cứng**. Field `message` chứa một 
 | `validation.required` | 400 | Thiếu trường bắt buộc (`@NotBlank`) |
 | `validation.emailInvalid` | 400 | Sai định dạng email (`@Email`) |
 | `validation.passwordTooShort` | 400 | Mật khẩu < 8 ký tự |
-| `validation.displayNameTooLong` | 400 | Tên hiển thị > 50 ký tự |
+| `validation.displayNameTooLong` | 400 | Tên hiển thị > 256 ký tự |
 | `validation.titleTooLong` | 400 | Tiêu đề conversation > 200 ký tự |
 | `validation.malformedJson` | 400 | Body không phải JSON hợp lệ |
 | `conversation.notFound` | 404 | Không tìm thấy, **hoặc** conversation không thuộc về user đang đăng nhập |
@@ -141,7 +141,7 @@ Request:
 Validation:
 - `email`: bắt buộc, đúng định dạng email.
 - `password`: bắt buộc, tối thiểu 8 ký tự.
-- `displayName`: bắt buộc, 1–50 ký tự.
+- `displayName`: bắt buộc, 1–256 ký tự.
 
 Response `201 Created`, `message: "auth.registerSuccess"`:
 ```json
@@ -274,7 +274,8 @@ Luồng: `POST /auth/register` → backend gửi mã 6 ký tự (số + chữ ho
 tới email → người dùng nhập mã ở màn "Kiểm tra hộp thư" → `POST /auth/verify-email` → backend tạo user và
 **đăng nhập luôn**.
 
-Trong DB chỉ có tài khoản đã xác minh, nên bảng `users` không cần cột trạng thái xác minh.
+Từ Bước 8, mọi user mới trong DB đều đã xác minh email: cột `users.email_verified_at` tự lấy `now()` khi tạo.
+Chỉ tài khoản tạo **trước** Bước 8 có cột này `NULL` (dùng ở [Bước 9](#bước-9--đăng-nhập-google--github)).
 
 ### `POST /api/auth/verify-email`
 
@@ -371,13 +372,18 @@ Backend sau proxy cần `server.forward-headers-strategy=framework` để `{base
 2. Không có email đã xác minh → redirect `/login?oauthError=auth.oauthEmailUnverified`.
 3. Có dòng `user_identities (provider, provider_user_id)` → dùng user đó.
 4. Không có → tìm user theo email:
-   - Có: thêm dòng `user_identities`. **Cẩn thận với user tạo trước Bước 8**: họ chưa từng xác minh email, có thể là
-     kẻ gian đăng ký trước bằng email của nạn nhân. Liên kết vào tài khoản đó thì kẻ gian vẫn đăng nhập được bằng mật
-     khẩu của hắn. Cách xử lý: khi liên kết, nếu user có `password_hash` và `created_at` trước ngày deploy Bước 8
-     thì đặt `password_hash = NULL` (chủ email đặt lại mật khẩu sau).
+   - Có: thêm dòng `user_identities` và đánh dấu đã xác minh (`users.email_verified_at`). **User tạo trước Bước 8**
+     có `email_verified_at = NULL` (chưa từng xác minh, có thể là kẻ gian đăng ký trước bằng email của nạn nhân) →
+     xoá luôn `password_hash` để hắn không đăng nhập bằng mật khẩu được nữa. User đã xác minh thì **giữ mật khẩu**:
+     vẫn đăng nhập được cả bằng mật khẩu lẫn Google/GitHub. Cả hai việc nằm trong một câu `UPDATE`
+     (`UserRepository.markEmailVerifiedByProvider`).
    - Không có: tạo user (`password_hash = NULL`, `display_name` từ `name`,
-     GitHub thiếu `name` thì dùng `login`, cắt còn 50 ký tự) + dòng `user_identities`.
-5. Tạo mã dùng 1 lần: Redis `oauth_code:{sha256(code)}` → `userId`, TTL 60 giây.
+     GitHub thiếu `name` thì dùng `login`, cắt còn 256 ký tự) + dòng `user_identities`.
+5. Tạo mã dùng 1 lần gồm 2 nửa: `code` (đi trên URL) và `nonce` (chỉ nằm trong cookie `oauth_login_nonce`,
+   `HttpOnly`, `SameSite=Lax`, `Path=/api/auth/oauth`, 60 giây). Redis `oauth_code:{sha256(code + ":" + nonce)}` → `userId`,
+   TTL 60 giây. Nhờ nửa trong cookie, mã chỉ đổi được ở **đúng trình duyệt** vừa đăng nhập: kẻ gian gửi link
+   `/oauth/callback?code=<mã của hắn>` cho người khác (login CSRF, ép nạn nhân vào tài khoản kẻ gian rồi đọc trộm
+   những gì nạn nhân chat) thì trình duyệt nạn nhân không có cookie, đổi mã thất bại.
 6. `302` tới `/oauth/callback?code=<mã>` (đường dẫn tương đối, chạy được cả dev lẫn prod).
 
 Lỗi bất kỳ (người dùng bấm Huỷ ở Google, ...) → failure handler `302` tới `/login?oauthError=auth.oauthFailed`.
@@ -387,7 +393,8 @@ Frontend đọc `oauthError` (là message key) và hiện toast.
 
 ### `POST /api/auth/oauth/exchange`
 
-Không cần header `Authorization`.
+Không cần header `Authorization`. Trình duyệt tự gửi kèm cookie `oauth_login_nonce` (fetch cùng origin), frontend
+không phải làm gì. Response luôn xoá cookie đó.
 
 Request:
 ```json
@@ -396,7 +403,7 @@ Request:
 
 Response `200 OK`, `message: "auth.loginSuccess"`: **giống hệt** response của `POST /api/auth/login`.
 
-Lỗi: `401 auth.invalidOAuthCode` nếu mã không tồn tại, hết hạn hoặc đã dùng (`getAndDelete`).
+Lỗi: `401 auth.invalidOAuthCode` nếu mã không tồn tại, hết hạn, đã dùng (`getAndDelete`), hoặc thiếu/sai cookie.
 
 ### Lưu ý cấu hình Security
 

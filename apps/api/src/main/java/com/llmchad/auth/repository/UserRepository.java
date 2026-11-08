@@ -31,7 +31,8 @@ public class UserRepository {
                 .optional();
     }
 
-    // RETURNING: lấy luôn user vừa tạo (id, created_at do DB sinh), không phải SELECT thêm lần nữa
+    // RETURNING: lấy luôn user vừa tạo (id, created_at do DB sinh), không phải
+    // SELECT thêm lần nữa
     public User insertUser(String email, String passwordHash, String displayName) {
         String sql = """
                 INSERT INTO users (email, password_hash, display_name)
@@ -44,6 +45,20 @@ public class UserRepository {
                 .param("displayName", displayName)
                 .query(UserRepository::mapRow)
                 .single();
+    }
+
+    // Google/GitHub vừa xác nhận người này là chủ email → đánh dấu user đã xác minh.
+    // Nếu trước đó user CHƯA từng xác minh (tài khoản tạo trước khi có bước xác minh email), mật khẩu có thể do
+    // kẻ gian đặt khi đăng ký bằng email của người khác → xoá mật khẩu. Đã xác minh rồi thì giữ nguyên mật khẩu.
+    // Một câu UPDATE: CASE đọc giá trị email_verified_at CŨ (trước khi câu lệnh này đổi nó).
+    public void markEmailVerifiedByProvider(UUID userId) {
+        String sql = """
+                UPDATE users
+                SET password_hash = CASE WHEN email_verified_at IS NULL THEN NULL ELSE password_hash END,
+                    email_verified_at = COALESCE(email_verified_at, now())
+                WHERE id = :userId
+                """;
+        jdbcClient.sql(sql).param("userId", userId).update();
     }
 
     public Optional<User> findById(UUID id) {

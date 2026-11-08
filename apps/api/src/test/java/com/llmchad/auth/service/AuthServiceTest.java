@@ -40,6 +40,7 @@ import com.llmchad.auth.dto.VerificationCodeResponse;
 import com.llmchad.auth.dto.VerifyEmailRequest;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
+import com.llmchad.auth.oauth2.OAuthLoginService;
 import com.llmchad.auth.repository.UserRepository;
 import com.llmchad.common.EmailService;
 import com.llmchad.common.HashUtils;
@@ -62,6 +63,8 @@ class AuthServiceTest {
     private EmailService emailService;
     @Mock
     private StringRedisTemplate redis;
+    @Mock
+    private OAuthLoginService oauthLoginService;
     @Mock
     private HashOperations<String, Object, Object> hashOps;
     @Mock
@@ -415,5 +418,28 @@ class AuthServiceTest {
         authService.logout("refresh");
 
         verify(tokenService).revokeRefreshToken("refresh");
+    }
+
+    // ---------- loginWithOAuthCode ----------
+
+    @Test
+    void loginWithOAuthCode_validCodeAndNonce_returnsTokens() {
+        when(oauthLoginService.consumeLoginCode("one-time-code", "nonce")).thenReturn(Optional.of(user.id()));
+        when(userService.getUserById(user.id())).thenReturn(user);
+        stubTokens();
+
+        LoginResponse res = authService.loginWithOAuthCode("one-time-code", "nonce");
+
+        assertThat(res.accessToken()).isEqualTo("access");
+        assertThat(res.user()).isEqualTo(user);
+    }
+
+    @Test
+    void loginWithOAuthCode_usedExpiredOrWrongBrowser_throwsUnauthorized() {
+        when(oauthLoginService.consumeLoginCode("used", null)).thenReturn(Optional.empty());
+
+        assertAppException(() -> authService.loginWithOAuthCode("used", null),
+                HttpStatus.UNAUTHORIZED, MessageKey.INVALID_OAUTH_CODE);
+        verify(tokenService, never()).createAccessToken(any());
     }
 }
