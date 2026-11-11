@@ -91,4 +91,14 @@ class UserRepositoryTest {
         assertThatThrownBy(() -> userRepository.insertUser(email, "hash2", "Binh"))
                 .isInstanceOf(DuplicateKeyException.class);
     }
+
+    @Test
+    void updatePassword_setsNewHash_andReturnsFalseForUnknownUser() {
+        String email = randomEmail();
+        User created = userRepository.insertUser(email, "old-hash", "An");
+
+        assertThat(userRepository.updatePassword(created.id(), "new-hash")).isTrue();
+        assertThat(userRepository.findCredentialsByEmail(email).orElseThrow().passwordHash()).isEqualTo("new-hash");
+        assertThat(userRepository.updatePassword(UUID.randomUUID(), "new-hash")).isFalse();
+    }
 }

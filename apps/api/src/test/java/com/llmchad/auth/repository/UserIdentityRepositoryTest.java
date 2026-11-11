@@ -137,6 +137,20 @@ class UserIdentityRepositoryTest {
         assertThat(emailVerifiedAt(userId)).isNotNull();
     }
 
+    @Test
+    void updatePassword_neverVerifiedUser_becomesVerified_soLaterGoogleLoginKeepsNewPassword() {
+        // Tài khoản cũ (cột NULL) đặt lại mật khẩu qua link trong mail = đã chứng minh sở hữu email
+        String email = randomEmail();
+        UUID userId = userRepository.insertUser(email, "hash", "An").id();
+        jdbcClient.sql("UPDATE users SET email_verified_at = NULL WHERE id = :id").param("id", userId).update();
+
+        userRepository.updatePassword(userId, "new-hash");
+        userRepository.markEmailVerifiedByProvider(userId);
+
+        assertThat(emailVerifiedAt(userId)).isNotNull();
+        assertThat(userRepository.findCredentialsByEmail(email).orElseThrow().passwordHash()).isEqualTo("new-hash");
+    }
+
     private String randomEmail() {
         return "user-" + UUID.randomUUID() + "@example.com";
     }

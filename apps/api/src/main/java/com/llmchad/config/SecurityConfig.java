@@ -37,7 +37,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/register", "/api/auth/login",
                                 "/api/auth/refresh", "/api/auth/logout", "/api/auth/verify-email",
-                                "/api/auth/resend-verification", "/api/auth/oauth/exchange")
+                                "/api/auth/resend-verification", "/api/auth/oauth/exchange",
+                                "/api/auth/forgot-password", "/api/auth/reset-password",
+                                "/api/auth/reset-password/validate")
                         .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));

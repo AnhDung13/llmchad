@@ -93,4 +93,33 @@ class EmailServiceTest {
         assertAppException(() -> emailService.sendVerificationCode("an@example.com", "a7Kp2Q", Duration.ofMinutes(15)),
                 HttpStatus.BAD_GATEWAY, MessageKey.SEND_MAIL_FAILED);
     }
+
+    @Test
+    void sendPasswordResetLink_english_fillsTemplateWithLinkAndSubject() throws Exception {
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
+
+        emailService.sendPasswordResetLink("an@example.com", "https://llmchad.site/reset-password?token=Tok123abc",
+                Duration.ofMinutes(15));
+
+        ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
+        verify(mailSender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Reset your LLM Chad password");
+        String raw = sentRaw();
+        assertThat(raw).contains("text/html")
+                .contains("text/plain")
+                // Dấu = trong URL bị mã hoá quoted-printable (=3D) nên chỉ tìm phần token
+                .contains("Tok123abc")
+                .contains("15 minutes")
+                .doesNotContain("Content-Disposition: attachment")
+                .doesNotContain("{{");
+    }
+
+    @Test
+    void sendPasswordResetLink_smtpFails_throwsBadGateway() {
+        doThrow(new MailSendException("timeout")).when(mailSender).send(any(MimeMessage.class));
+
+        assertAppException(() -> emailService.sendPasswordResetLink("an@example.com",
+                "https://llmchad.site/reset-password?token=Tok123abc", Duration.ofMinutes(15)),
+                HttpStatus.BAD_GATEWAY, MessageKey.SEND_MAIL_FAILED);
+    }
 }

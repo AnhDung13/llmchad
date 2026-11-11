@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.llmchad.auth.dto.ForgotPasswordRequest;
 import com.llmchad.auth.dto.LoginRequest;
 import com.llmchad.auth.dto.LoginResponse;
 import com.llmchad.auth.dto.LogoutRequest;
@@ -17,11 +18,15 @@ import com.llmchad.auth.dto.OAuthExchangeRequest;
 import com.llmchad.auth.dto.RefreshRequest;
 import com.llmchad.auth.dto.RegisterRequest;
 import com.llmchad.auth.dto.ResendVerificationRequest;
+import com.llmchad.auth.dto.ResetLinkSentResponse;
+import com.llmchad.auth.dto.ResetPasswordRequest;
+import com.llmchad.auth.dto.ResetTokenRequest;
 import com.llmchad.auth.dto.TokenResponse;
 import com.llmchad.auth.dto.VerificationCodeResponse;
 import com.llmchad.auth.dto.VerifyEmailRequest;
 import com.llmchad.auth.oauth2.OAuthLoginService;
 import com.llmchad.auth.service.AuthService;
+import com.llmchad.auth.service.PasswordResetService;
 import com.llmchad.common.ApiResponse;
 import com.llmchad.common.MessageKey;
 
@@ -33,9 +38,11 @@ import jakarta.validation.Valid;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, PasswordResetService passwordResetService) {
         this.authService = authService;
+        this.passwordResetService = passwordResetService;
     }
 
     @PostMapping("/login")
@@ -61,6 +68,26 @@ public class AuthController {
     public ApiResponse<LoginResponse> verifyEmail(@Valid @RequestBody VerifyEmailRequest verifyEmailRequest) {
         return ApiResponse.success(HttpStatus.OK, MessageKey.EMAIL_VERIFIED,
                 authService.verifyEmail(verifyEmailRequest));
+    }
+
+    /** Luôn 200 dù email có tồn tại hay không (không cho dò email). Gửi lại link = gọi lại endpoint này */
+    @PostMapping("/forgot-password")
+    public ApiResponse<ResetLinkSentResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest payload) {
+        return ApiResponse.success(HttpStatus.OK, MessageKey.PASSWORD_RESET_SENT,
+                passwordResetService.requestReset(payload.email()));
+    }
+
+    /** Link còn dùng được không. Không xoá token: trình quét link của Gmail/Outlook mở trước cũng không làm hỏng link */
+    @PostMapping("/reset-password/validate")
+    public ApiResponse<Void> validateResetToken(@Valid @RequestBody ResetTokenRequest payload) {
+        passwordResetService.validateToken(payload.token());
+        return ApiResponse.success(HttpStatus.OK, null, null);
+    }
+
+    @PostMapping("/reset-password")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest payload) {
+        passwordResetService.resetPassword(payload.token(), payload.newPassword());
+        return ApiResponse.success(HttpStatus.OK, MessageKey.PASSWORD_RESET_SUCCESS, null);
     }
 
     @PostMapping("/resend-verification")

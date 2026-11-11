@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.crypto.SecretKey;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpStatus;
@@ -44,6 +47,8 @@ class TokenServiceTest {
     private StringRedisTemplate redis;
     @Mock
     private ValueOperations<String, String> valueOps;
+    @Mock
+    private SetOperations<String, String> setOps;
 
     private TokenService tokenService;
     private JwtDecoder jwtDecoder;
@@ -73,9 +78,14 @@ class TokenServiceTest {
         assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt())).isEqualTo(ACCESS_TTL);
     }
 
+    private void stubRedis() {
+        when(redis.opsForValue()).thenReturn(valueOps);
+        when(redis.opsForSet()).thenReturn(setOps);
+    }
+
     @Test
     void createRefreshToken_storesHashedKeyWithTtl() {
-        when(redis.opsForValue()).thenReturn(valueOps);
+        stubRedis();
 
         String token = tokenService.createRefreshToken(user.id());
 
@@ -86,11 +96,15 @@ class TokenServiceTest {
         verify(valueOps).set(keyCaptor.capture(), eq(user.id().toString()), eq(REFRESH_TTL));
         // Chỉ lưu hash của token, không lưu token gốc
         assertThat(keyCaptor.getValue()).startsWith("refresh_token:").doesNotContain(token);
+        // Ghi thêm vào danh sách token của user (để đăng xuất mọi thiết bị)
+        String hash = keyCaptor.getValue().substring("refresh_token:".length());
+        verify(setOps).add("refresh_tokens_of:" + user.id(), hash);
+        verify(redis).expire("refresh_tokens_of:" + user.id(), REFRESH_TTL);
     }
 
     @Test
     void createRefreshToken_generatesDifferentTokensEachTime() {
-        when(redis.opsForValue()).thenReturn(valueOps);
+        stubRedis();
 
         assertThat(tokenService.createRefreshToken(user.id()))
                 .isNotEqualTo(tokenService.createRefreshToken(user.id()));
@@ -98,12 +112,13 @@ class TokenServiceTest {
 
     @Test
     void consumeRefreshToken_validToken_returnsUserIdUsingSameKey() {
-        when(redis.opsForValue()).thenReturn(valueOps);
+        stubRedis();
         String token = tokenService.createRefreshToken(user.id());
         String storedKey = capturedStoredKey();
         when(valueOps.getAndDelete(storedKey)).thenReturn(user.id().toString());
 
         assertThat(tokenService.consumeRefreshToken(token)).isEqualTo(user.id());
+        verify(setOps).remove("refresh_tokens_of:" + user.id(), storedKey.substring("refresh_token:".length()));
     }
 
     @Test
@@ -117,13 +132,26 @@ class TokenServiceTest {
 
     @Test
     void revokeRefreshToken_deletesSameKeyThatWasStored() {
-        when(redis.opsForValue()).thenReturn(valueOps);
+        stubRedis();
         String token = tokenService.createRefreshToken(user.id());
         String storedKey = capturedStoredKey();
+        when(valueOps.getAndDelete(storedKey)).thenReturn(user.id().toString());
 
         tokenService.revokeRefreshToken(token);
 
-        verify(redis).delete(storedKey);
+        verify(valueOps).getAndDelete(storedKey);
+        verify(setOps).remove("refresh_tokens_of:" + user.id(), storedKey.substring("refresh_token:".length()));
+    }
+
+    @Test
+    void revokeAllRefreshTokens_deletesEveryTokenOfUserAndTheIndex() {
+        when(redis.opsForSet()).thenReturn(setOps);
+        when(setOps.members("refresh_tokens_of:" + user.id())).thenReturn(Set.of("h1"));
+
+        tokenService.revokeAllRefreshTokens(user.id());
+
+        verify(redis).delete(List.of("refresh_token:h1"));
+        verify(redis).delete("refresh_tokens_of:" + user.id());
     }
 
     private String capturedStoredKey() {

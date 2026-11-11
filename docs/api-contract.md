@@ -17,7 +17,8 @@ giao diện sẽ chạy mà không phải sửa gì phía web.
 ## Xác thực
 
 Mọi endpoint **trừ** các endpoint `POST /api/auth/register`, `/login`, `/refresh`, `/logout`,
-`/verify-email`, `/resend-verification`, `/oauth/exchange` và các đường dẫn OAuth của Spring
+`/verify-email`, `/resend-verification`, `/oauth/exchange`, `/forgot-password`, `/reset-password`,
+`/reset-password/validate` và các đường dẫn OAuth của Spring
 (`/api/oauth2/authorization/*`, `/api/login/oauth2/code/*`, xem [Bước 9](#bước-9--đăng-nhập-google--github)) đều cần header:
 
 ```
@@ -412,6 +413,79 @@ mà frontend dựa vào `401` để refresh token. Tách 2 `SecurityFilterChain`
 - `@Order(1)`, `securityMatcher("/api/oauth2/**", "/api/login/oauth2/**")`: `oauth2Login`, cho phép session
   (Spring lưu `state` trong session giữa lúc đi và lúc về).
 - `@Order(2)`: chain stateless hiện tại (resource server JWT).
+
+---
+
+## Bước 10 – Quên mật khẩu
+
+Gửi **link** (không phải mã) tới email. Luồng:
+
+```
+/login → "Quên mật khẩu?" → /forgot-password
+  → POST /api/auth/forgot-password { email }       ← backend gửi mail chứa link
+  → người dùng bấm link: /reset-password?token=...  ← trang frontend, xoá token khỏi URL ngay khi mở
+  → POST /api/auth/reset-password/validate { token } ← báo sớm link hỏng (không dùng mất token)
+  → POST /api/auth/reset-password { token, newPassword }
+  → /login, đăng nhập bằng mật khẩu mới
+```
+
+### `POST /api/auth/forgot-password`
+
+Request:
+```json
+{ "email": "an@example.com" }
+```
+
+Response `200 OK`, `message: "auth.passwordResetSent"`, `data: { "expiresIn": 900, "resendAfter": 60 }`.
+**Luôn 200 dù email chưa đăng ký** (không cho người ngoài dò email nào đã có tài khoản); chỉ email có tài khoản mới
+nhận được mail. Tài khoản chỉ đăng nhập bằng Google/GitHub (chưa có mật khẩu) cũng nhận được link để đặt mật khẩu.
+
+Gửi lại link = gọi lại endpoint này: link mới thay link cũ (link cũ hết dùng được).
+
+Lỗi: `429 auth.tooManyRequests` (chưa qua 60 giây), `502 auth.sendMailFailed` (bỏ thời gian chờ để thử lại ngay).
+
+### `POST /api/auth/reset-password/validate`
+
+Request `{ "token": "..." }`. `200` nếu link còn dùng được, `410 auth.resetTokenInvalid` nếu không.
+**Chỉ đọc**, không xoá token: Gmail/Outlook hay tự mở trước link trong mail để quét lừa đảo, nếu mở link làm hỏng
+token thì người dùng bấm vào sẽ thấy link chết.
+
+### `POST /api/auth/reset-password`
+
+Request:
+```json
+{ "token": "...", "newPassword": "matkhaumoi123" }
+```
+
+Response `200 OK`, `message: "auth.passwordResetSuccess"`, `data: null`. Không đăng nhập luôn: người dùng đăng nhập
+lại bằng mật khẩu mới.
+
+- `newPassword` cùng luật với đăng ký: `400 validation.passwordTooShort` nếu dưới 8 ký tự.
+- `410 auth.resetTokenInvalid`: token không tồn tại, quá 15 phút, đã dùng, hoặc đã có link mới hơn.
+
+Thành công thì:
+- Đặt `password_hash` mới và `email_verified_at = COALESCE(email_verified_at, now())`. Bấm được link trong mail =
+  chứng minh sở hữu email; không đánh dấu thì lần đăng nhập Google/GitHub sau sẽ xoá mất mật khẩu vừa đặt
+  (xem Bước 9, `markEmailVerifiedByProvider`).
+- **Đăng xuất mọi thiết bị**: thu hồi mọi refresh token của user. Access token đang có vẫn sống tới khi hết hạn
+  (tối đa 15 phút).
+
+### Phía backend (`PasswordResetService`)
+
+| Redis key | Giá trị | TTL |
+|---|---|---|
+| `reset_token:{sha256(token)}` | `userId` | 15 phút |
+| `reset_token_user:{userId}` | sha256 của token mới nhất (để huỷ link cũ khi gửi link mới) | 15 phút |
+| `forgot_password:{email}` | `"1"`, tạo bằng `SET NX` | 60 giây |
+| `refresh_tokens_of:{userId}` | Set các sha256 refresh token còn hiệu lực (`TokenService`, để đăng xuất mọi thiết bị) | bằng refresh TTL |
+
+- Token: `RandomCode.generate(32)` (~190 bit), không đoán được nên không cần đếm số lần thử. Chỉ lưu hash.
+- Đổi mật khẩu dùng `getAndDelete`: hai request cùng token thì chỉ một cái thành công.
+- Link ghép từ config `app.frontend-url` (biến `FRONTEND_URL`, mặc định `http://localhost:5173`, prod
+  `https://llmchad.site`), **không** lấy từ header `Host` của request: kẻ gian gọi forgot-password với
+  `Host: evil.com` thì mail thật của mình sẽ chứa link trỏ về `evil.com` và token rơi vào tay hắn.
+- Refresh token tạo **trước** khi có `refresh_tokens_of` không nằm trong Set nên không bị thu hồi khi đặt lại mật khẩu
+  (tự hết hạn sau tối đa 14 ngày).
 
 ---
 

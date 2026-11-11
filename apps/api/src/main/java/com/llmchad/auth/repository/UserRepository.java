@@ -61,6 +61,19 @@ public class UserRepository {
         jdbcClient.sql(sql).param("userId", userId).update();
     }
 
+    // Đặt lại mật khẩu qua link trong mail = người này vừa chứng minh sở hữu email → đánh dấu đã xác minh luôn.
+    // Không đánh dấu thì lần đăng nhập Google/GitHub sau, markEmailVerifiedByProvider sẽ xoá mật khẩu vừa đặt.
+    // false = không có user này (đã bị xoá)
+    public boolean updatePassword(UUID userId, String passwordHash) {
+        String sql = """
+                UPDATE users
+                SET password_hash = :passwordHash,
+                    email_verified_at = COALESCE(email_verified_at, now())
+                WHERE id = :userId
+                """;
+        return jdbcClient.sql(sql).param("passwordHash", passwordHash).param("userId", userId).update() == 1;
+    }
+
     public Optional<User> findById(UUID id) {
         String sql = "SELECT id, email, display_name, created_at FROM users WHERE id = :id";
         return jdbcClient.sql(sql)

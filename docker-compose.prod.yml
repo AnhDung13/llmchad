@@ -60,6 +60,8 @@ services:
       # Mail mã xác minh (Gmail SMTP, VALIDATION_PWD là App Password 16 ký tự)
       VALIDATION_MAIL: ${VALIDATION_MAIL:?not_found}
       VALIDATION_PWD: ${VALIDATION_PWD:?not_found}
+      # Gốc của link đặt lại mật khẩu trong mail
+      FRONTEND_URL: https://llmchad.site
 
       # Đăng nhập Google/GitHub. GitHub: dùng OAuth App của prod (callback https://llmchad.site/...), không phải app dev
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?not_found}

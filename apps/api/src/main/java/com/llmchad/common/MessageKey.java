@@ -29,6 +29,11 @@ public final class MessageKey {
     public static final String TOO_MANY_REQUESTS = "auth.tooManyRequests";
     public static final String SEND_MAIL_FAILED = "auth.sendMailFailed";
 
+    // Quên mật khẩu (link trong mail, xem docs/api-contract.md → Bước 10)
+    public static final String PASSWORD_RESET_SENT = "auth.passwordResetSent";
+    public static final String PASSWORD_RESET_SUCCESS = "auth.passwordResetSuccess";
+    public static final String RESET_TOKEN_INVALID = "auth.resetTokenInvalid";
+
     // OAuth (Google, GitHub)
     public static final String INVALID_OAUTH_CODE = "auth.invalidOAuthCode";
     public static final String OAUTH_FAILED = "auth.oauthFailed";
