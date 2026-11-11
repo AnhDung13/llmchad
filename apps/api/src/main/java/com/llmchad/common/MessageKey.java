@@ -19,6 +19,26 @@ public final class MessageKey {
     public static final String INVALID_REFRESH_TOKEN = "auth.invalidRefreshToken";
     public static final String UNAUTHORIZED = "auth.unauthorized";
 
+    // Xác minh email (mã 6 ký tự gửi qua mail, xem docs/api-contract.md → Bước 8)
+    public static final String EMAIL_VERIFIED = "auth.emailVerified";
+    public static final String VERIFICATION_SENT = "auth.verificationSent";
+    public static final String INVALID_VERIFY_CODE = "auth.invalidVerifyCode";
+    public static final String VERIFICATION_EXPIRED = "auth.verificationExpired";
+    public static final String VERIFY_CODE_EXPIRED = "auth.verifyCodeExpired";
+    public static final String VERIFY_ATTEMPTS_EXCEEDED = "auth.verifyAttemptsExceeded";
+    public static final String TOO_MANY_REQUESTS = "auth.tooManyRequests";
+    public static final String SEND_MAIL_FAILED = "auth.sendMailFailed";
+
+    // Quên mật khẩu (link trong mail, xem docs/api-contract.md → Bước 10)
+    public static final String PASSWORD_RESET_SENT = "auth.passwordResetSent";
+    public static final String PASSWORD_RESET_SUCCESS = "auth.passwordResetSuccess";
+    public static final String RESET_TOKEN_INVALID = "auth.resetTokenInvalid";
+
+    // OAuth (Google, GitHub)
+    public static final String INVALID_OAUTH_CODE = "auth.invalidOAuthCode";
+    public static final String OAUTH_FAILED = "auth.oauthFailed";
+    public static final String OAUTH_EMAIL_UNVERIFIED = "auth.oauthEmailUnverified";
+
     // Validation
     public static final String VALIDATION_FAILED = "validation.failed";
     public static final String FIELD_REQUIRED = "validation.required";

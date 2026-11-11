@@ -31,16 +31,47 @@ public class UserRepository {
                 .optional();
     }
 
-    public void insertUser(String email, String passwordHash, String displayName) {
+    // RETURNING: lấy luôn user vừa tạo (id, created_at do DB sinh), không phải
+    // SELECT thêm lần nữa
+    public User insertUser(String email, String passwordHash, String displayName) {
         String sql = """
                 INSERT INTO users (email, password_hash, display_name)
                 VALUES (:email, :passwordHash, :displayName)
+                RETURNING id, email, display_name, created_at
                 """;
-        jdbcClient.sql(sql)
+        return jdbcClient.sql(sql)
                 .param("email", email)
                 .param("passwordHash", passwordHash)
-                .param("displayName", displayName).update();
+                .param("displayName", displayName)
+                .query(UserRepository::mapRow)
+                .single();
+    }
 
+    // Google/GitHub vừa xác nhận người này là chủ email → đánh dấu user đã xác minh.
+    // Nếu trước đó user CHƯA từng xác minh (tài khoản tạo trước khi có bước xác minh email), mật khẩu có thể do
+    // kẻ gian đặt khi đăng ký bằng email của người khác → xoá mật khẩu. Đã xác minh rồi thì giữ nguyên mật khẩu.
+    // Một câu UPDATE: CASE đọc giá trị email_verified_at CŨ (trước khi câu lệnh này đổi nó).
+    public void markEmailVerifiedByProvider(UUID userId) {
+        String sql = """
+                UPDATE users
+                SET password_hash = CASE WHEN email_verified_at IS NULL THEN NULL ELSE password_hash END,
+                    email_verified_at = COALESCE(email_verified_at, now())
+                WHERE id = :userId
+                """;
+        jdbcClient.sql(sql).param("userId", userId).update();
+    }
+
+    // Đặt lại mật khẩu qua link trong mail = người này vừa chứng minh sở hữu email → đánh dấu đã xác minh luôn.
+    // Không đánh dấu thì lần đăng nhập Google/GitHub sau, markEmailVerifiedByProvider sẽ xoá mật khẩu vừa đặt.
+    // false = không có user này (đã bị xoá)
+    public boolean updatePassword(UUID userId, String passwordHash) {
+        String sql = """
+                UPDATE users
+                SET password_hash = :passwordHash,
+                    email_verified_at = COALESCE(email_verified_at, now())
+                WHERE id = :userId
+                """;
+        return jdbcClient.sql(sql).param("passwordHash", passwordHash).param("userId", userId).update() == 1;
     }
 
     public Optional<User> findById(UUID id) {

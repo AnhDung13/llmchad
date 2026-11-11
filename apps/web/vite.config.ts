@@ -19,7 +19,9 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         // Trình duyệt gọi /api/... trên cùng origin với Vite, Vite chuyển tiếp sang Spring → không cần CORS khi dev.
-        '/api': { target: apiUrl, changeOrigin: true },
+        // xfwd: gửi kèm X-Forwarded-Host/Proto để Spring (server.forward-headers-strategy=framework) biết
+        // trình duyệt đang ở localhost:5173 → redirect_uri của OAuth trỏ về đúng Vite, không phải :8080.
+        '/api': { target: apiUrl, changeOrigin: true, xfwd: true },
       },
     },
   }

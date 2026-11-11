@@ -4,7 +4,7 @@ import { api } from '../lib/api'
 import { ApiError, setSessionExpiredHandler } from '../lib/http'
 import { keys } from '../lib/queryClient'
 import { clearSession, getSession, saveSession } from '../lib/session'
-import type { LoginInput, RegisterInput } from '../lib/types'
+import type { LoginInput, LoginResponse, RegisterInput } from '../lib/types'
 import { AuthContext, type AuthState } from './context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -43,35 +43,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refreshToken) api.logout(refreshToken).catch(() => {})
   }, [queryClient])
 
-  const login = useCallback(
-    async (input: LoginInput) => {
-      const res = await api.login(input)
-      saveSession(res.data)
+  /** Lưu token và user vừa nhận từ /auth/login hoặc /auth/oauth/exchange */
+  const startSession = useCallback(
+    (data: LoginResponse) => {
+      saveSession(data)
       // Bỏ dữ liệu còn sót của phiên trước, nhưng giữ query 'me': useQuery ở trên đang bám vào đúng object Query đó.
       // Xoá đi rồi tạo lại thì useQuery vẫn nhìn object cũ (đang lỗi) cho tới khi component render lại → kẹt ở /login.
       queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== keys.me[0] })
-      queryClient.setQueryData(keys.me, res.data.user) // đã có user → không cần gọi /api/me
+      queryClient.setQueryData(keys.me, data.user) // đã có user → không cần gọi /api/me
       setHasSession(true)
-      return res.message
     },
     [queryClient],
   )
 
-  const register = useCallback(
-    async (input: RegisterInput) => {
-      const res = await api.register(input)
-      await login({ email: input.email, password: input.password })
+  const login = useCallback(
+    async (input: LoginInput) => {
+      const res = await api.login(input)
+      startSession(res.data)
       return res.message
     },
-    [login],
+    [startSession],
+  )
+
+  const loginWithOAuthCode = useCallback(
+    async (code: string) => {
+      const res = await api.exchangeOAuthCode(code)
+      startSession(res.data)
+      return res.message
+    },
+    [startSession],
+  )
+
+  // Chưa đăng nhập được: backend chỉ tạo tài khoản sau khi nhập đúng mã xác minh (verifyEmail)
+  const register = useCallback(async (input: RegisterInput) => {
+    const res = await api.register(input)
+    return { message: res.message, verification: res.data }
+  }, [])
+
+  const verifyEmail = useCallback(
+    async (email: string, password: string, code: string) => {
+      const res = await api.verifyEmail(email, password, code)
+      startSession(res.data)
+      return res.message
+    },
+    [startSession],
   )
 
   const user = hasSession ? (me.data ?? null) : null
   const loading = hasSession && me.isPending
 
   const value = useMemo<AuthState>(
-    () => ({ user, loading, login, register, logout }),
-    [user, loading, login, register, logout],
+    () => ({ user, loading, login, loginWithOAuthCode, register, verifyEmail, logout }),
+    [user, loading, login, loginWithOAuthCode, register, verifyEmail, logout],
   )
 
   return <AuthContext value={value}>{children}</AuthContext>

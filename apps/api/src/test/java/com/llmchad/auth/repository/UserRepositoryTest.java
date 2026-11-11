@@ -12,6 +12,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DuplicateKeyException;
 
+import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 
 /**
@@ -39,6 +40,18 @@ class UserRepositoryTest {
         userRepository.insertUser(email, "hash", "An");
 
         assertThat(userRepository.existEmail(email)).isTrue();
+    }
+
+    @Test
+    void insertUser_returnsCreatedUser() {
+        String email = randomEmail();
+
+        User created = userRepository.insertUser(email, "hash", "An");
+
+        assertThat(created.id()).isNotNull();
+        assertThat(created.email()).isEqualTo(email);
+        assertThat(created.displayName()).isEqualTo("An");
+        assertThat(created.createdAt()).isNotNull();
     }
 
     @Test
@@ -77,5 +90,15 @@ class UserRepositoryTest {
 
         assertThatThrownBy(() -> userRepository.insertUser(email, "hash2", "Binh"))
                 .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    @Test
+    void updatePassword_setsNewHash_andReturnsFalseForUnknownUser() {
+        String email = randomEmail();
+        User created = userRepository.insertUser(email, "old-hash", "An");
+
+        assertThat(userRepository.updatePassword(created.id(), "new-hash")).isTrue();
+        assertThat(userRepository.findCredentialsByEmail(email).orElseThrow().passwordHash()).isEqualTo("new-hash");
+        assertThat(userRepository.updatePassword(UUID.randomUUID(), "new-hash")).isFalse();
     }
 }

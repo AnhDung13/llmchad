@@ -56,6 +56,19 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:?not_found}
       LLM_API_KEY: ${LLM_API_KEY:?not_found}
       LLM_MODEL: ${LLM_MODEL:?not_found}
+
+      # Mail mã xác minh (Gmail SMTP, VALIDATION_PWD là App Password 16 ký tự)
+      VALIDATION_MAIL: ${VALIDATION_MAIL:?not_found}
+      VALIDATION_PWD: ${VALIDATION_PWD:?not_found}
+      # Gốc của link đặt lại mật khẩu trong mail
+      FRONTEND_URL: https://llmchad.site
+
+      # Đăng nhập Google/GitHub. GitHub: dùng OAuth App của prod (callback https://llmchad.site/...), không phải app dev
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?not_found}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?not_found}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?not_found}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?not_found}
+
     depends_on:
       db:
         condition: service_healthy

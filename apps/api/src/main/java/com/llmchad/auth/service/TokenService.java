@@ -1,12 +1,10 @@
 package com.llmchad.auth.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +18,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
 import com.llmchad.auth.model.User;
+import com.llmchad.common.HashUtils;
 import com.llmchad.common.MessageKey;
 import com.llmchad.exception.AppException;
 
@@ -53,37 +52,50 @@ public class TokenService {
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 
+    // refresh_token:<sha256(token)> → userId
+    // refresh_tokens_of:<userId>     → Set các sha256 đang còn hiệu lực của user, để đăng xuất mọi thiết bị
+    private static final String TOKEN_KEY_PREFIX = "refresh_token:";
+    private static final String USER_TOKENS_KEY_PREFIX = "refresh_tokens_of:";
+
     public String createRefreshToken(UUID userId) {
         byte[] randomBytes = new byte[32];
         secureRandom.nextBytes(randomBytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
-        redis.opsForValue().set(createRedisKey(token), userId.toString(), refreshTtl);
+        String hash = HashUtils.sha256(token);
+        redis.opsForValue().set(TOKEN_KEY_PREFIX + hash, userId.toString(), refreshTtl);
+        String userTokensKey = USER_TOKENS_KEY_PREFIX + userId;
+        redis.opsForSet().add(userTokensKey, hash);
+        // Set sống bằng token mới nhất; token trong Set có thể đã hết hạn trước, xoá thừa key không tồn tại không sao
+        redis.expire(userTokensKey, refreshTtl);
         return token;
     }
 
     public UUID consumeRefreshToken(String token) {
-        String userId = redis.opsForValue().getAndDelete(createRedisKey(token));
+        String hash = HashUtils.sha256(token);
+        String userId = redis.opsForValue().getAndDelete(TOKEN_KEY_PREFIX + hash);
         if (userId == null) {
             throw new AppException(HttpStatus.UNAUTHORIZED, MessageKey.INVALID_REFRESH_TOKEN);
         }
+        // Mỗi lần refresh sinh token mới: bỏ token cũ khỏi Set để Set không phình mãi
+        redis.opsForSet().remove(USER_TOKENS_KEY_PREFIX + userId, hash);
         return UUID.fromString(userId);
     }
 
     public void revokeRefreshToken(String token) {
-        redis.delete(createRedisKey(token));
-    }
-
-    private String hashToken(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashedBytes = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(hashedBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
+        String hash = HashUtils.sha256(token);
+        String userId = redis.opsForValue().getAndDelete(TOKEN_KEY_PREFIX + hash);
+        if (userId != null) {
+            redis.opsForSet().remove(USER_TOKENS_KEY_PREFIX + userId, hash);
         }
     }
 
-    private String createRedisKey(String token) {
-        return "refresh_token:" + hashToken(token);
+    /** Đăng xuất mọi thiết bị (vd sau khi đặt lại mật khẩu). Access token đang có vẫn sống tới khi hết hạn (15 phút). */
+    public void revokeAllRefreshTokens(UUID userId) {
+        String userTokensKey = USER_TOKENS_KEY_PREFIX + userId;
+        Set<String> hashes = redis.opsForSet().members(userTokensKey);
+        if (hashes != null && !hashes.isEmpty()) {
+            redis.delete(hashes.stream().map(hash -> TOKEN_KEY_PREFIX + hash).toList());
+        }
+        redis.delete(userTokensKey);
     }
 }

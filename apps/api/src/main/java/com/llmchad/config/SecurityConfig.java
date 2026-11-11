@@ -8,6 +8,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -26,14 +27,19 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 @Configuration
 public class SecurityConfig {
 
+    // Chain cho API (JWT). Chain OAuth (OAuthSecurityConfig, @Order(1)) chạy trước, chỉ bắt /api/oauth2/** và /api/login/oauth2/**
     @Bean
+    @Order(2)
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/register", "/api/auth/login",
-                                "/api/auth/refresh", "/api/auth/logout")
+                                "/api/auth/refresh", "/api/auth/logout", "/api/auth/verify-email",
+                                "/api/auth/resend-verification", "/api/auth/oauth/exchange",
+                                "/api/auth/forgot-password", "/api/auth/reset-password",
+                                "/api/auth/reset-password/validate")
                         .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
