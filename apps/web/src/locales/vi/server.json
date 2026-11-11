@@ -17,7 +17,10 @@
     "verificationExpired": "Phiên đăng ký đã hết hạn, vui lòng đăng ký lại",
     "verifyAttemptsExceeded": "Nhập sai quá nhiều lần, vui lòng đăng ký lại",
     "sendMailFailed": "Không gửi được email, vui lòng thử lại sau",
-    "verifyCodeExpired": "Mã xác minh đã hết hạn, hãy bấm gửi lại mã mới"
+    "verifyCodeExpired": "Mã xác minh đã hết hạn, hãy bấm gửi lại mã mới",
+    "passwordResetSent": "Nếu email đã đăng ký, link đặt lại mật khẩu đã được gửi",
+    "passwordResetSuccess": "Đã đặt lại mật khẩu, hãy đăng nhập bằng mật khẩu mới",
+    "resetTokenInvalid": "Link đặt lại mật khẩu không hợp lệ hoặc đã hết hạn"
   },
   "validation": {
     "failed": "Dữ liệu không hợp lệ",

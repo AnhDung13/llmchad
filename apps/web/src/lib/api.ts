@@ -10,6 +10,7 @@ import type {
   LoginResponse,
   Message,
   RegisterInput,
+  ResetLinkSentResponse,
   User,
   VerificationCodeResponse,
 } from './types'
@@ -35,6 +36,19 @@ export const api = {
 
   resendVerification: (email: string) =>
     envelope<VerificationCodeResponse>('auth/resend-verification', post({ email }), { auth: false }),
+
+  /** Luôn thành công dù email chưa đăng ký (backend không cho dò email). Gửi lại link = gọi lại hàm này */
+  forgotPassword: (email: string) =>
+    envelope<ResetLinkSentResponse>('auth/forgot-password', post({ email }), { auth: false }),
+
+  /** Link còn dùng được không; lỗi "auth.resetTokenInvalid" (410) nếu đã dùng/hết hạn/bị thay bằng link mới */
+  validateResetToken: async (token: string) => {
+    await request('auth/reset-password/validate', post({ token }), { auth: false })
+  },
+
+  /** Đặt mật khẩu mới. Backend đăng xuất mọi thiết bị đang đăng nhập tài khoản này */
+  resetPassword: (token: string, newPassword: string) =>
+    envelope<null>('auth/reset-password', post({ token, newPassword }), { auth: false }),
 
   /** Thu hồi refresh token ở backend */
   logout: async (refreshToken: string) => {

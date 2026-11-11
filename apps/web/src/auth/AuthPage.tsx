@@ -9,6 +9,8 @@ import { GitHubIcon, GoogleIcon } from '../ui/icons'
 import { AuthLayout } from './AuthLayout'
 import { CheckEmailPanel } from './CheckEmailPanel'
 import { useAuth } from './context'
+import { Field } from './Field'
+import { inputClass, linkClass, primaryButtonClass } from './styles'
 
 type Mode = 'login' | 'register'
 
@@ -137,16 +139,16 @@ export function AuthPage({ mode }: { mode: Mode }) {
 
         {!isRegister && (
           <div className="flex justify-end pt-1 text-sm">
-            <span className="cursor-not-allowed text-indigo-500/70" title={t('notSupported')}>
+            <Link to="/forgot-password" className={linkClass}>
               {t('forgotPassword')}
-            </span>
+            </Link>
           </div>
         )}
 
         <button
           type="submit"
           disabled={submitting}
-          className="mt-1 w-full rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-indigo-500/25 transition hover:from-indigo-600 hover:to-violet-600 disabled:opacity-60"
+          className={`mt-1 ${primaryButtonClass}`}
         >
           {t(submitting ? 'submitting' : isRegister ? 'register' : 'login')}
         </button>
@@ -167,25 +169,12 @@ export function AuthPage({ mode }: { mode: Mode }) {
         {t(isRegister ? 'hasAccount' : 'noAccount')}
         <Link
           to={isRegister ? '/login' : '/register'}
-          className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+          className={linkClass}
         >
           {t(isRegister ? 'login' : 'registerNow')}
         </Link>
       </p>
     </AuthLayout>
-  )
-}
-
-const inputClass =
-  'w-full rounded-lg border border-slate-200 bg-white py-2.5 pr-3 pl-10 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-night-700 dark:bg-night-900 dark:placeholder:text-slate-500'
-
-function Field({ icon, trailing, children }: { icon: ReactNode; trailing?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="relative">
-      <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-slate-400">{icon}</span>
-      {children}
-      {trailing && <span className="absolute top-1/2 right-2 -translate-y-1/2">{trailing}</span>}
-    </div>
   )
 }
 

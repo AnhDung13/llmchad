@@ -55,6 +55,14 @@ export type ChatEvent =
   | { type: 'done'; message: Message }
 
 /** Trả về từ POST /api/auth/register và /resend-verification, dùng để đếm ngược */
+/** POST /auth/forgot-password */
+export type ResetLinkSentResponse = {
+  /** Số giây link đặt lại mật khẩu còn hiệu lực */
+  expiresIn: number
+  /** Số giây phải chờ trước khi được gửi lại link */
+  resendAfter: number
+}
+
 export type VerificationCodeResponse = {
   /** Số giây mã còn hiệu lực */
   expiresIn: number

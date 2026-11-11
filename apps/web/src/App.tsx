@@ -2,8 +2,10 @@ import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
 import { AuthPage } from './auth/AuthPage'
 import { AuthProvider } from './auth/AuthProvider'
+import { ForgotPasswordPage } from './auth/ForgotPasswordPage'
 import { useAuth } from './auth/context'
 import { OAuthCallbackPage } from './auth/OAuthCallbackPage'
+import { ResetPasswordPage } from './auth/ResetPasswordPage'
 import { ChatPage } from './chat/ChatPage'
 
 function RequireAuth() {
@@ -24,6 +26,9 @@ export default function App() {
           <Route path="/login" element={<AuthPage key="login" mode="login" />} />
           <Route path="/register" element={<AuthPage key="register" mode="register" />} />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* Link trong mail đặt lại mật khẩu: /reset-password?token=... */}
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route element={<RequireAuth />}>
             {/* Một ChatPage dùng chung cho "/" và "/c/:id" để không bị mount lại khi đang stream */}
             <Route path="/" element={<ChatPage />}>
