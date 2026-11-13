@@ -10,17 +10,19 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import com.llmchad.config.JpaConfig;
+import com.llmchad.chat.entity.ConversationEntity;
 import com.llmchad.chat.model.Conversation;
-import com.llmchad.common.Paging;
 
-@JdbcTest
+@DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(ConversationRepository.class)
+@Import(JpaConfig.class)
 class ConversationRepositoryTest {
 
     @Autowired
@@ -37,7 +39,9 @@ class ConversationRepositoryTest {
         otherUser = insertUser();
     }
 
-    // Trong 1 transaction now() luôn trả cùng một giá trị, nên test thứ tự phải tự đặt modified_at
+    // Trong 1 transaction now() luôn trả cùng một giá trị, nên test thứ tự phải tự đặt modified_at.
+    // Dữ liệu đã nằm trong DB (saveAndFlush), nên sửa bằng SQL được. Các query trả record (projection) đọc thẳng
+    // từ DB nên thấy giá trị mới.
     private void setModifiedAt(UUID convoId, Instant time) {
         jdbcClient.sql("UPDATE conversations SET modified_at = :t WHERE id = :id")
                 .param("t", Timestamp.from(time)).param("id", convoId).update();
@@ -52,9 +56,18 @@ class ConversationRepositoryTest {
                 .query(UUID.class).single();
     }
 
+    // Giống ConversationService.createConversation
+    private Conversation insert(UUID userId, String title) {
+        return conversationRepository.saveAndFlush(new ConversationEntity(userId, title)).toModel();
+    }
+
+    private List<Conversation> page(UUID userId, int size, int pageFromZero) {
+        return conversationRepository.findByUserIdOrderByModifiedAtDesc(userId, PageRequest.of(pageFromZero, size));
+    }
+
     @Test
-    void insert_returnsCreatedRow() {
-        Conversation convo = conversationRepository.insertConversation(owner, "Hello");
+    void saveAndFlush_returnsCreatedRowWithDbGeneratedFields() {
+        Conversation convo = insert(owner, "Hello");
 
         assertThat(convo.id()).isNotNull();
         assertThat(convo.title()).isEqualTo("Hello");
@@ -63,85 +76,81 @@ class ConversationRepositoryTest {
     }
 
     @Test
-    void findById_onlyReturnsOwnersConversation() {
-        Conversation convo = conversationRepository.insertConversation(owner, "Hello");
+    void findByIdAndUserId_onlyReturnsOwnersConversation() {
+        Conversation convo = insert(owner, "Hello");
 
-        assertThat(conversationRepository.findById(owner, convo.id())).contains(convo);
-        assertThat(conversationRepository.findById(otherUser, convo.id())).isEmpty();
+        assertThat(conversationRepository.findByIdAndUserId(convo.id(), owner)).contains(convo);
+        assertThat(conversationRepository.findByIdAndUserId(convo.id(), otherUser)).isEmpty();
     }
 
     @Test
-    void getConversations_filtersByUserAndSortsByModifiedAtDesc() {
-        Conversation oldest = conversationRepository.insertConversation(owner, "oldest");
-        Conversation newest = conversationRepository.insertConversation(owner, "newest");
-        Conversation middle = conversationRepository.insertConversation(owner, "middle");
-        conversationRepository.insertConversation(otherUser, "not mine");
+    void findByUserId_filtersByUserAndSortsByModifiedAtDesc() {
+        Conversation oldest = insert(owner, "oldest");
+        Conversation newest = insert(owner, "newest");
+        Conversation middle = insert(owner, "middle");
+        insert(otherUser, "not mine");
         setModifiedAt(oldest.id(), Instant.parse("2026-01-01T00:00:00Z"));
         setModifiedAt(middle.id(), Instant.parse("2026-01-02T00:00:00Z"));
         setModifiedAt(newest.id(), Instant.parse("2026-01-03T00:00:00Z"));
 
-        List<Conversation> result = conversationRepository.getConversations(owner, new Paging(20, 1));
-
-        assertThat(result).extracting(Conversation::title).containsExactly("newest", "middle", "oldest");
+        assertThat(page(owner, 20, 0)).extracting(Conversation::title).containsExactly("newest", "middle", "oldest");
     }
 
     @Test
-    void getConversations_paginates() {
+    void findByUserId_paginates() {
         for (int i = 1; i <= 5; i++) {
-            Conversation c = conversationRepository.insertConversation(owner, "c" + i);
+            Conversation c = insert(owner, "c" + i);
             setModifiedAt(c.id(), Instant.parse("2026-01-0" + i + "T00:00:00Z"));
         }
 
-        assertThat(conversationRepository.getConversations(owner, new Paging(2, 1)))
-                .extracting(Conversation::title).containsExactly("c5", "c4");
-        assertThat(conversationRepository.getConversations(owner, new Paging(2, 2)))
-                .extracting(Conversation::title).containsExactly("c3", "c2");
-        assertThat(conversationRepository.getConversations(owner, new Paging(2, 3)))
-                .extracting(Conversation::title).containsExactly("c1");
-        assertThat(conversationRepository.getConversations(owner, new Paging(2, 4))).isEmpty();
+        assertThat(page(owner, 2, 0)).extracting(Conversation::title).containsExactly("c5", "c4");
+        assertThat(page(owner, 2, 1)).extracting(Conversation::title).containsExactly("c3", "c2");
+        assertThat(page(owner, 2, 2)).extracting(Conversation::title).containsExactly("c1");
+        assertThat(page(owner, 2, 3)).isEmpty();
     }
 
     @Test
-    void update_ownConversation_changesTitle() {
-        Conversation convo = conversationRepository.insertConversation(owner, "Hello");
+    void rename_thenFlush_updatesTitleAndModifiedAt() {
+        // Giống ConversationService.updateConversation: đổi field của entity, flush → Hibernate tự UPDATE
+        ConversationEntity entity = conversationRepository.saveAndFlush(new ConversationEntity(owner, "Hello"));
+        Instant old = Instant.parse("2020-01-01T00:00:00Z");
+        setModifiedAt(entity.getId(), old);
 
-        assertThat(conversationRepository.updateConversation(owner, convo.id(), "Renamed"))
-                .get().extracting(Conversation::title).isEqualTo("Renamed");
+        entity.rename("Renamed");
+        conversationRepository.flush();
+
+        Conversation inDb = conversationRepository.findByIdAndUserId(entity.getId(), owner).orElseThrow();
+        assertThat(inDb.title()).isEqualTo("Renamed");
+        assertThat(inDb.modifiedAt()).isAfter(old);
+        // modified_at mới do DB sinh đã được Hibernate đọc lại vào entity: service trả đúng giá trị này
+        assertThat(entity.toModel()).isEqualTo(inDb);
     }
 
     @Test
-    void update_otherUsersConversation_isEmptyAndUnchanged() {
-        Conversation convo = conversationRepository.insertConversation(owner, "Hello");
-
-        assertThat(conversationRepository.updateConversation(otherUser, convo.id(), "Hacked")).isEmpty();
-        assertThat(conversationRepository.findById(owner, convo.id()))
-                .get().extracting(Conversation::title).isEqualTo("Hello");
-    }
-
-    @Test
-    void touchConversation_bumpsModifiedAt() {
-        Conversation convo = conversationRepository.insertConversation(owner, "Hello");
+    void touch_bumpsModifiedAt() {
+        Conversation convo = insert(owner, "Hello");
         Instant old = Instant.parse("2020-01-01T00:00:00Z");
         setModifiedAt(convo.id(), old);
 
-        conversationRepository.touchConversation(convo.id());
+        conversationRepository.touch(convo.id());
 
-        assertThat(conversationRepository.findById(owner, convo.id()).orElseThrow().modifiedAt()).isAfter(old);
+        assertThat(conversationRepository.findByIdAndUserId(convo.id(), owner).orElseThrow().modifiedAt())
+                .isAfter(old);
     }
 
     @Test
-    void delete_otherUsersConversation_returnsFalseAndKeepsRow() {
-        Conversation convo = conversationRepository.insertConversation(owner, "Hello");
+    void deleteByIdAndUserId_otherUsersConversation_deletesNothing() {
+        Conversation convo = insert(owner, "Hello");
 
-        assertThat(conversationRepository.deleteConversation(otherUser, convo.id())).isFalse();
-        assertThat(conversationRepository.findById(owner, convo.id())).isPresent();
+        assertThat(conversationRepository.deleteByIdAndUserId(convo.id(), otherUser)).isZero();
+        assertThat(conversationRepository.findByIdAndUserId(convo.id(), owner)).isPresent();
     }
 
     @Test
-    void delete_ownConversation_returnsTrueAndRemovesRow() {
-        Conversation convo = conversationRepository.insertConversation(owner, "Hello");
+    void deleteByIdAndUserId_ownConversation_deletesRow() {
+        Conversation convo = insert(owner, "Hello");
 
-        assertThat(conversationRepository.deleteConversation(owner, convo.id())).isTrue();
-        assertThat(conversationRepository.findById(owner, convo.id())).isEmpty();
+        assertThat(conversationRepository.deleteByIdAndUserId(convo.id(), owner)).isEqualTo(1);
+        assertThat(conversationRepository.findByIdAndUserId(convo.id(), owner)).isEmpty();
     }
 }

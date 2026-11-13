@@ -20,7 +20,7 @@ import org.springframework.http.HttpStatus;
 
 import com.llmchad.chat.model.Conversation;
 import com.llmchad.chat.model.Message;
-import com.llmchad.chat.repository.MessageRepositoriy;
+import com.llmchad.chat.repository.MessageRepository;
 import com.llmchad.common.MessageKey;
 import com.llmchad.exception.AppException;
 
@@ -28,7 +28,7 @@ import com.llmchad.exception.AppException;
 class MessageServiceTest {
 
     @Mock
-    private MessageRepositoriy messageRepositoriy;
+    private MessageRepository messageRepository;
     @Mock
     private ConversationService conversationService;
 
@@ -43,7 +43,7 @@ class MessageServiceTest {
         Message msg = new Message(UUID.randomUUID(), "user", "Hi", null, Instant.now());
         when(conversationService.getConversation(userId, convoId))
                 .thenReturn(new Conversation(convoId, "Hello", Instant.now(), Instant.now()));
-        when(messageRepositoriy.getMessages(convoId)).thenReturn(List.of(msg));
+        when(messageRepository.findByConversationIdOrderByCreatedAtAsc(convoId)).thenReturn(List.of(msg));
 
         assertThat(messageService.getMessages(userId, convoId)).containsExactly(msg);
     }
@@ -54,6 +54,6 @@ class MessageServiceTest {
                 .thenThrow(new AppException(HttpStatus.NOT_FOUND, MessageKey.CONVERSATION_NOT_FOUND));
 
         assertThatThrownBy(() -> messageService.getMessages(userId, convoId)).isInstanceOf(AppException.class);
-        verify(messageRepositoriy, never()).getMessages(any());
+        verify(messageRepository, never()).findByConversationIdOrderByCreatedAtAsc(any());
     }
 }

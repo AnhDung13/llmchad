@@ -178,7 +178,7 @@ class PasswordResetServiceTest {
         when(redis.opsForValue()).thenReturn(valueOps);
         when(valueOps.getAndDelete("reset_token:" + HashUtils.sha256("tok"))).thenReturn(user.id().toString());
         when(passwordEncoder.encode("newpassword123")).thenReturn("new-hash");
-        when(userRepository.updatePassword(user.id(), "new-hash")).thenReturn(true);
+        when(userRepository.updatePassword(user.id(), "new-hash")).thenReturn(1);
 
         service.resetPassword("tok", "newpassword123");
 
@@ -202,7 +202,7 @@ class PasswordResetServiceTest {
         when(redis.opsForValue()).thenReturn(valueOps);
         when(valueOps.getAndDelete("reset_token:" + HashUtils.sha256("tok"))).thenReturn(user.id().toString());
         when(passwordEncoder.encode("newpassword123")).thenReturn("new-hash");
-        when(userRepository.updatePassword(user.id(), "new-hash")).thenReturn(false);
+        when(userRepository.updatePassword(user.id(), "new-hash")).thenReturn(0);
 
         assertAppException(() -> service.resetPassword("tok", "newpassword123"),
                 HttpStatus.GONE, MessageKey.RESET_TOKEN_INVALID);

@@ -19,7 +19,7 @@ public class UserService {
     }
 
     public User getUserById(UUID userId) {
-        return userRepository.findById(userId)
+        return userRepository.findUserById(userId)
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, MessageKey.UNAUTHORIZED));
     }
 

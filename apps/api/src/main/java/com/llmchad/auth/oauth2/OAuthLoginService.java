@@ -9,6 +9,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.llmchad.auth.entity.UserEntity;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 import com.llmchad.auth.repository.UserRepository;
@@ -59,7 +60,7 @@ public class OAuthLoginService {
         // 1. Đã từng đăng nhập bằng tài khoản Google/GitHub này
         Optional<UUID> linkedUserId = identityRepository.findUserId(provider, providerUserId);
         if (linkedUserId.isPresent()) {
-            return userRepository.findById(linkedUserId.get())
+            return userRepository.findUserById(linkedUserId.get())
                     // user_identities có ON DELETE CASCADE nên không thể xảy ra, trừ khi dữ liệu
                     // hỏng
                     .orElseThrow(
@@ -75,14 +76,22 @@ public class OAuthLoginService {
             // Provider đã xác nhận chủ email → đánh dấu đã xác minh. Tài khoản cũ chưa từng xác minh thì bị xoá
             // mật khẩu (có thể kẻ gian đăng ký trước bằng email này); đã xác minh thì vẫn đăng nhập bằng mật khẩu được.
             userRepository.markEmailVerifiedByProvider(user.id());
-            identityRepository.insert(user.id(), provider, providerUserId);
+            linkIdentity(user.id(), provider, providerUserId);
             return user;
         }
 
         // 3. Người mới: tạo user không có mật khẩu
-        User created = userRepository.insertUser(normalizedEmail, null, toDisplayName(displayName, normalizedEmail));
-        identityRepository.insert(created.id(), provider, providerUserId);
+        User created = userRepository
+                .saveAndFlush(new UserEntity(normalizedEmail, null, toDisplayName(displayName, normalizedEmail)))
+                .toModel();
+        linkIdentity(created.id(), provider, providerUserId);
         return created;
+    }
+
+    // saveAndFlush thay vì save: INSERT chạy ngay để DuplicateKeyException ném ra trong hàm này (nơi gọi bắt để thử
+    // lại). Chỉ save thì INSERT bị hoãn tới lúc commit và lỗi trùng khoá có dạng khác.
+    private void linkIdentity(UUID userId, String provider, String providerUserId) {
+        identityRepository.saveAndFlush(new UserIdentityEntity(userId, provider, providerUserId));
     }
 
     /**

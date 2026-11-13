@@ -3,27 +3,22 @@ package com.llmchad.auth.oauth2;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
-@Repository
-public class UserIdentityRepository {
-    private final JdbcClient jdbcClient;
+/**
+ * Spring Data tự tạo class cài đặt interface này lúc khởi động (không cần @Repository).
+ * JpaRepository<Entity, kiểu id> có sẵn save, saveAndFlush, findById, delete...
+ */
+public interface UserIdentityRepository extends JpaRepository<UserIdentityEntity, Long> {
 
-    public UserIdentityRepository(JdbcClient jdbcClient) {
-        this.jdbcClient = jdbcClient;
-    }
-
-    public Optional<UUID> findUserId(String provider, String providerUserId) {
-        String sql = "SELECT user_id FROM user_identities WHERE provider = :provider AND provider_user_id = :providerUserId";
-
-        return jdbcClient.sql(sql).param("provider", provider).param("providerUserId", providerUserId)
-                .query((rs, rowNum) -> rs.getObject("user_id", UUID.class)).optional();
-    }
-
-    public void insert(UUID userId, String provider, String providerUserId) {
-        String sql = "INSERT INTO user_identities (user_id, provider, provider_user_id) VALUES (:userId,:provider,:providerUserId)";
-        jdbcClient.sql(sql).param("userId", userId).param("provider", provider).param("providerUserId", providerUserId)
-                .update();
-    }
+    /**
+     * Chỉ lấy một cột (user_id) nên viết JPQL: truy vấn trên entity và field Java, không phải tên bảng/cột.
+     * :provider khớp với tên tham số của method.
+     */
+    @Query("""
+            SELECT i.userId FROM UserIdentityEntity i
+            WHERE i.provider = :provider AND i.providerUserId = :providerUserId
+            """)
+    Optional<UUID> findUserId(String provider, String providerUserId);
 }

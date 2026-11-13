@@ -21,6 +21,7 @@ import com.llmchad.auth.dto.ResendVerificationRequest;
 import com.llmchad.auth.dto.TokenResponse;
 import com.llmchad.auth.dto.VerificationCodeResponse;
 import com.llmchad.auth.dto.VerifyEmailRequest;
+import com.llmchad.auth.entity.UserEntity;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 import com.llmchad.auth.oauth2.OAuthLoginService;
@@ -64,7 +65,7 @@ public class AuthService {
 
     public VerificationCodeResponse register(RegisterRequest payload) {
         String email = EmailUtils.normalize(payload.email());
-        if (userRepository.existEmail(email)) {
+        if (userRepository.existsByEmail(email)) {
             throw new AppException(HttpStatus.CONFLICT, MessageKey.EMAIL_ALREADY_EXISTS);
         }
         acquireResendCooldown(email);
@@ -119,7 +120,7 @@ public class AuthService {
         }
         User user;
         try {
-            user = userRepository.insertUser(email, passwordHash, displayName);
+            user = userRepository.saveAndFlush(new UserEntity(email, passwordHash, displayName)).toModel();
         } catch (DuplicateKeyException e) {
             throw new AppException(HttpStatus.CONFLICT, MessageKey.EMAIL_ALREADY_EXISTS);
         }
