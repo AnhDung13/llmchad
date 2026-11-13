@@ -38,6 +38,7 @@ import com.llmchad.auth.dto.ResendVerificationRequest;
 import com.llmchad.auth.dto.TokenResponse;
 import com.llmchad.auth.dto.VerificationCodeResponse;
 import com.llmchad.auth.dto.VerifyEmailRequest;
+import com.llmchad.auth.entity.UserEntity;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 import com.llmchad.auth.oauth2.OAuthLoginService;
@@ -46,6 +47,7 @@ import com.llmchad.common.EmailService;
 import com.llmchad.common.HashUtils;
 import com.llmchad.common.MessageKey;
 import com.llmchad.exception.AppException;
+import com.llmchad.support.TestEntities;
 
 /** Unit test thuần Mockito: không khởi động Spring, mọi dependency đều là mock. */
 @ExtendWith(MockitoExtension.class)
@@ -99,7 +101,7 @@ class AuthServiceTest {
 
     @Test
     void register_emailAlreadyExists_throwsConflict() {
-        when(userRepository.existEmail("an@example.com")).thenReturn(true);
+        when(userRepository.existsByEmail("an@example.com")).thenReturn(true);
 
         assertAppException(() -> authService.register(new RegisterRequest("an@example.com", "password123", "An")),
                 HttpStatus.CONFLICT, MessageKey.EMAIL_ALREADY_EXISTS);
@@ -108,7 +110,7 @@ class AuthServiceTest {
 
     @Test
     void register_newEmail_storesPendingAndMailsCode_withoutCreatingUser() {
-        when(userRepository.existEmail("an@example.com")).thenReturn(false);
+        when(userRepository.existsByEmail("an@example.com")).thenReturn(false);
         when(redis.opsForValue()).thenReturn(valueOps);
         when(valueOps.setIfAbsent(eq(COOLDOWN_KEY), eq("1"), any(Duration.class))).thenReturn(true);
         when(redis.<Object, Object>opsForHash()).thenReturn(hashOps);
@@ -135,12 +137,12 @@ class AuthServiceTest {
         // Mã sống 3 phút, bản đăng ký sống 15 phút
         verify(emailService).sendVerificationCode(anyString(), anyString(), eq(Duration.ofMinutes(3)));
         verify(redis).expire(PENDING_KEY, Duration.ofMinutes(15));
-        verify(userRepository, never()).insertUser(anyString(), anyString(), anyString());
+        verify(userRepository, never()).saveAndFlush(any());
     }
 
     @Test
     void register_withinCooldown_throwsTooManyRequests() {
-        when(userRepository.existEmail("an@example.com")).thenReturn(false);
+        when(userRepository.existsByEmail("an@example.com")).thenReturn(false);
         when(redis.opsForValue()).thenReturn(valueOps);
         when(valueOps.setIfAbsent(eq(COOLDOWN_KEY), eq("1"), any(Duration.class))).thenReturn(false);
 
@@ -151,7 +153,7 @@ class AuthServiceTest {
 
     @Test
     void register_mailFails_releasesCooldownSoUserCanRetry() {
-        when(userRepository.existEmail("an@example.com")).thenReturn(false);
+        when(userRepository.existsByEmail("an@example.com")).thenReturn(false);
         when(redis.opsForValue()).thenReturn(valueOps);
         when(valueOps.setIfAbsent(eq(COOLDOWN_KEY), eq("1"), any(Duration.class))).thenReturn(true);
         when(redis.<Object, Object>opsForHash()).thenReturn(hashOps);
@@ -185,7 +187,7 @@ class AuthServiceTest {
         assertAppException(() -> authService.verifyEmail(new VerifyEmailRequest("an@example.com", "password123", "ab3de9")),
                 HttpStatus.UNPROCESSABLE_CONTENT, MessageKey.INVALID_VERIFY_CODE);
         verify(redis, never()).delete(anyString());
-        verify(userRepository, never()).insertUser(anyString(), anyString(), anyString());
+        verify(userRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -197,7 +199,7 @@ class AuthServiceTest {
                 HttpStatus.GONE, MessageKey.VERIFY_CODE_EXPIRED);
         verify(hashOps, never()).increment(anyString(), any(), org.mockito.ArgumentMatchers.anyLong());
         verify(redis, never()).delete(anyString());
-        verify(userRepository, never()).insertUser(anyString(), anyString(), anyString());
+        verify(userRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -210,7 +212,7 @@ class AuthServiceTest {
         assertAppException(() -> authService.verifyEmail(new VerifyEmailRequest("an@example.com", "password123", "Ab3dE9")),
                 HttpStatus.NOT_FOUND, MessageKey.VERIFICATION_EXPIRED);
         verify(redis).delete(PENDING_KEY);
-        verify(userRepository, never()).insertUser(anyString(), anyString(), anyString());
+        verify(userRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -235,7 +237,7 @@ class AuthServiceTest {
         assertAppException(() -> authService.verifyEmail(new VerifyEmailRequest("an@example.com", "password123", "Ab3dE9")),
                 HttpStatus.NOT_FOUND, MessageKey.VERIFICATION_EXPIRED);
         verify(redis).delete(PENDING_KEY);
-        verify(userRepository, never()).insertUser(anyString(), any(), any());
+        verify(userRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -255,13 +257,18 @@ class AuthServiceTest {
         when(hashOps.entries(PENDING_KEY)).thenReturn(pending("2"));
         when(passwordEncoder.matches("password123", "hashed")).thenReturn(true);
         when(redis.delete(PENDING_KEY)).thenReturn(true);
-        when(userRepository.insertUser("an@example.com", "hashed", "An")).thenReturn(user);
+        when(userRepository.saveAndFlush(any(UserEntity.class))).thenReturn(TestEntities.savedUser(user, "hashed"));
         stubTokens();
 
         LoginResponse res = authService.verifyEmail(new VerifyEmailRequest("An@example.com", "password123", "Ab3dE9"));
 
         assertThat(res.accessToken()).isEqualTo("access");
         assertThat(res.user()).isEqualTo(user);
+        ArgumentCaptor<UserEntity> saved = ArgumentCaptor.forClass(UserEntity.class);
+        verify(userRepository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue())
+                .extracting(UserEntity::getEmail, UserEntity::getPasswordHash, UserEntity::getDisplayName)
+                .containsExactly("an@example.com", "hashed", "An");
     }
 
     @Test
@@ -273,7 +280,7 @@ class AuthServiceTest {
 
         assertAppException(() -> authService.verifyEmail(new VerifyEmailRequest("an@example.com", "password123", "Ab3dE9")),
                 HttpStatus.NOT_FOUND, MessageKey.VERIFICATION_EXPIRED);
-        verify(userRepository, never()).insertUser(anyString(), anyString(), anyString());
+        verify(userRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -283,7 +290,7 @@ class AuthServiceTest {
         when(passwordEncoder.matches("password123", "hashed")).thenReturn(true);
         when(redis.delete(PENDING_KEY)).thenReturn(true);
         doThrow(new DuplicateKeyException("users_email_key"))
-                .when(userRepository).insertUser("an@example.com", "hashed", "An");
+                .when(userRepository).saveAndFlush(any(UserEntity.class));
 
         assertAppException(() -> authService.verifyEmail(new VerifyEmailRequest("an@example.com", "password123", "Ab3dE9")),
                 HttpStatus.CONFLICT, MessageKey.EMAIL_ALREADY_EXISTS);

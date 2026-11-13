@@ -101,7 +101,7 @@ public class PasswordResetService {
         UUID userId = UUID.fromString(userIdValue);
         redis.delete(USER_TOKEN_KEY_PREFIX + userId);
 
-        if (!userRepository.updatePassword(userId, passwordEncoder.encode(newPassword))) {
+        if (userRepository.updatePassword(userId, passwordEncoder.encode(newPassword)) == 0) {
             // User đã bị xoá sau khi gửi link
             throw new AppException(HttpStatus.GONE, MessageKey.RESET_TOKEN_INVALID);
         }

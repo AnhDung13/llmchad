@@ -6,21 +6,21 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.llmchad.chat.model.Message;
-import com.llmchad.chat.repository.MessageRepositoriy;
+import com.llmchad.chat.repository.MessageRepository;
 
 @Service
 public class MessageService {
-    private final MessageRepositoriy messageRepositoriy;
+    private final MessageRepository messageRepository;
     private final ConversationService conversationService;
 
-    public MessageService(MessageRepositoriy messageRepositoriy, ConversationService conversationService) {
-        this.messageRepositoriy = messageRepositoriy;
+    public MessageService(MessageRepository messageRepository, ConversationService conversationService) {
+        this.messageRepository = messageRepository;
         this.conversationService = conversationService;
     }
 
     public List<Message> getMessages(UUID userId, UUID convoId) {
         // Check convo if it belong to user
         conversationService.getConversation(userId, convoId);
-        return messageRepositoriy.getMessages(convoId);
+        return messageRepository.findByConversationIdOrderByCreatedAtAsc(convoId);
     }
 }

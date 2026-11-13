@@ -31,7 +31,7 @@ class UserServiceTest {
     @Test
     void getUserById_found_returnsUser() {
         User user = new User(UUID.randomUUID(), "an@example.com", "An", Instant.now());
-        when(userRepository.findById(user.id())).thenReturn(Optional.of(user));
+        when(userRepository.findUserById(user.id())).thenReturn(Optional.of(user));
 
         assertThat(userService.getUserById(user.id())).isEqualTo(user);
     }
@@ -39,7 +39,7 @@ class UserServiceTest {
     @Test
     void getUserById_missing_throwsUnauthorized() {
         UUID id = UUID.randomUUID();
-        when(userRepository.findById(id)).thenReturn(Optional.empty());
+        when(userRepository.findUserById(id)).thenReturn(Optional.empty());
 
         assertAppException(() -> userService.getUserById(id), HttpStatus.UNAUTHORIZED, MessageKey.UNAUTHORIZED);
     }

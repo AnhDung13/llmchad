@@ -10,21 +10,23 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import com.llmchad.config.JpaConfig;
+import com.llmchad.chat.entity.MessageEntity;
 import com.llmchad.chat.model.Message;
 
-@JdbcTest
+@DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(MessageRepositoriy.class)
-class MessageRepositoriyTest {
+@Import(JpaConfig.class)
+class MessageRepositoryTest {
 
     @Autowired
-    private MessageRepositoriy messageRepositoriy;
+    private MessageRepository messageRepository;
     @Autowired
     private JdbcClient jdbcClient;
 
@@ -47,6 +49,11 @@ class MessageRepositoriyTest {
                 .query(UUID.class).single();
     }
 
+    // Giống StreamingService
+    private Message insert(UUID conversationId, String role, String content, String reasoning) {
+        return messageRepository.saveAndFlush(new MessageEntity(conversationId, role, content, reasoning)).toModel();
+    }
+
     // Trong 1 transaction now() không đổi, nên test thứ tự phải tự đặt created_at
     private void setCreatedAt(UUID messageId, Instant time) {
         jdbcClient.sql("UPDATE messages SET created_at = :t WHERE id = :id")
@@ -54,8 +61,8 @@ class MessageRepositoriyTest {
     }
 
     @Test
-    void insertMessage_userMessageWithoutReasoning() {
-        Message msg = messageRepositoriy.insertMessage(convoId, "user", "Hi", null);
+    void insert_userMessageWithoutReasoning() {
+        Message msg = insert(convoId, "user", "Hi", null);
 
         assertThat(msg.id()).isNotNull();
         assertThat(msg.role()).isEqualTo("user");
@@ -65,32 +72,32 @@ class MessageRepositoriyTest {
     }
 
     @Test
-    void insertMessage_assistantMessageKeepsReasoning() {
-        Message msg = messageRepositoriy.insertMessage(convoId, "assistant", "Answer", "Thinking...");
+    void insert_assistantMessageKeepsReasoning() {
+        Message msg = insert(convoId, "assistant", "Answer", "Thinking...");
 
         assertThat(msg.reasoning()).isEqualTo("Thinking...");
     }
 
     @Test
-    void insertMessage_invalidRole_isRejectedByCheckConstraint() {
-        assertThatThrownBy(() -> messageRepositoriy.insertMessage(convoId, "system", "x", null))
+    void insert_invalidRole_isRejectedByCheckConstraint() {
+        assertThatThrownBy(() -> insert(convoId, "system", "x", null))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
-    void getMessages_onlyThisConversation_oldestFirst() {
-        Message second = messageRepositoriy.insertMessage(convoId, "assistant", "second", null);
-        Message first = messageRepositoriy.insertMessage(convoId, "user", "first", null);
+    void findByConversationId_onlyThisConversation_oldestFirst() {
+        Message second = insert(convoId, "assistant", "second", null);
+        Message first = insert(convoId, "user", "first", null);
         setCreatedAt(first.id(), Instant.parse("2026-01-01T00:00:00Z"));
         setCreatedAt(second.id(), Instant.parse("2026-01-01T00:00:01Z"));
-        messageRepositoriy.insertMessage(insertConversation(), "user", "other convo", null);
+        insert(insertConversation(), "user", "other convo", null);
 
-        assertThat(messageRepositoriy.getMessages(convoId))
+        assertThat(messageRepository.findByConversationIdOrderByCreatedAtAsc(convoId))
                 .extracting(Message::content).containsExactly("first", "second");
     }
 
     @Test
-    void getMessages_emptyConversation_returnsEmptyList() {
-        assertThat(messageRepositoriy.getMessages(convoId)).isEmpty();
+    void findByConversationId_emptyConversation_returnsEmptyList() {
+        assertThat(messageRepository.findByConversationIdOrderByCreatedAtAsc(convoId)).isEmpty();
     }
 }

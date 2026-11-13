@@ -1,93 +1,74 @@
 package com.llmchad.auth.repository;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.transaction.annotation.Transactional;
 
+import com.llmchad.auth.entity.UserEntity;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 
-@Repository
-public class UserRepository {
-    private final JdbcClient jdbcClient;
+public interface UserRepository extends JpaRepository<UserEntity, UUID> {
 
-    public UserRepository(JdbcClient jdbcClient) {
-        this.jdbcClient = jdbcClient;
+    // Derived query: Spring Data đọc tên method để sinh câu SQL. existsBy... → SELECT ... LIMIT 1
+    boolean existsByEmail(String email);
+
+    Optional<UserEntity> findByEmail(String email);
+
+    /**
+     * Kiểu trả về là record User chứ không phải entity (DTO projection): Spring Data chỉ SELECT 4 cột khớp tên
+     * tham số của record và gọi constructor của nó. Chữ "User" giữa find và By chỉ để đặt tên, Spring Data bỏ qua.
+     * Không dùng findById có sẵn được vì method đó trả entity.
+     */
+    Optional<User> findUserById(UUID id);
+
+    /**
+     * default method: code Java bình thường trong interface, gọi lại method khác của repository.
+     * JPQL không lồng được "new UserCredentials(new User(...), ...)", nên load entity rồi tự chuyển.
+     */
+    default Optional<UserCredentials> findCredentialsByEmail(String email) {
+        return findByEmail(email).map(UserEntity::toCredentials);
     }
 
-    public Boolean existEmail(String email) {
-        String sql = "SELECT EXISTS(SELECT 1 FROM users WHERE email = :email)";
-        return jdbcClient.sql(sql).param("email", email).query(Boolean.class).single();
-    }
-
-    public Optional<UserCredentials> findCredentialsByEmail(String email) {
-        String sql = "SELECT id, email, display_name, created_at, password_hash FROM users WHERE email = :email";
-        return jdbcClient.sql(sql).param("email", email)
-                .query((rs, rowNum) -> new UserCredentials(mapRow(rs, rowNum), rs.getString("password_hash")))
-                .optional();
-    }
-
-    // RETURNING: lấy luôn user vừa tạo (id, created_at do DB sinh), không phải
-    // SELECT thêm lần nữa
-    public User insertUser(String email, String passwordHash, String displayName) {
-        String sql = """
-                INSERT INTO users (email, password_hash, display_name)
-                VALUES (:email, :passwordHash, :displayName)
-                RETURNING id, email, display_name, created_at
-                """;
-        return jdbcClient.sql(sql)
-                .param("email", email)
-                .param("passwordHash", passwordHash)
-                .param("displayName", displayName)
-                .query(UserRepository::mapRow)
-                .single();
-    }
+    // Hai câu UPDATE dưới đây giữ nguyên SQL cũ (nativeQuery = true) thay vì load entity rồi sửa field:
+    // mỗi câu đọc giá trị CŨ của email_verified_at và ghi mới trong cùng một lệnh nên không bị race giữa
+    // hai request, và logic bảo mật này đã có test.
+    //
+    // @Modifying: báo cho Spring Data đây là UPDATE/DELETE (gọi executeUpdate), không phải SELECT.
+    // flushAutomatically: ghi các thay đổi entity đang chờ xuống DB trước khi chạy câu này.
+    // clearAutomatically: câu SQL đổi DB trực tiếp, entity Hibernate đang giữ trong bộ nhớ thành cũ → xoá hết,
+    // lần đọc sau mới lấy từ DB.
+    // @Transactional: method tự khai báo trong interface không có transaction mặc định, mà UPDATE thì bắt buộc
+    // phải có. Đang ở trong transaction của service thì dùng chung transaction đó.
 
     // Google/GitHub vừa xác nhận người này là chủ email → đánh dấu user đã xác minh.
     // Nếu trước đó user CHƯA từng xác minh (tài khoản tạo trước khi có bước xác minh email), mật khẩu có thể do
     // kẻ gian đặt khi đăng ký bằng email của người khác → xoá mật khẩu. Đã xác minh rồi thì giữ nguyên mật khẩu.
-    // Một câu UPDATE: CASE đọc giá trị email_verified_at CŨ (trước khi câu lệnh này đổi nó).
-    public void markEmailVerifiedByProvider(UUID userId) {
-        String sql = """
-                UPDATE users
-                SET password_hash = CASE WHEN email_verified_at IS NULL THEN NULL ELSE password_hash END,
-                    email_verified_at = COALESCE(email_verified_at, now())
-                WHERE id = :userId
-                """;
-        jdbcClient.sql(sql).param("userId", userId).update();
-    }
+    // CASE đọc giá trị email_verified_at CŨ (trước khi câu lệnh này đổi nó).
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(nativeQuery = true, value = """
+            UPDATE users
+            SET password_hash = CASE WHEN email_verified_at IS NULL THEN NULL ELSE password_hash END,
+                email_verified_at = COALESCE(email_verified_at, now())
+            WHERE id = :userId
+            """)
+    void markEmailVerifiedByProvider(UUID userId);
 
     // Đặt lại mật khẩu qua link trong mail = người này vừa chứng minh sở hữu email → đánh dấu đã xác minh luôn.
     // Không đánh dấu thì lần đăng nhập Google/GitHub sau, markEmailVerifiedByProvider sẽ xoá mật khẩu vừa đặt.
-    // false = không có user này (đã bị xoá)
-    public boolean updatePassword(UUID userId, String passwordHash) {
-        String sql = """
-                UPDATE users
-                SET password_hash = :passwordHash,
-                    email_verified_at = COALESCE(email_verified_at, now())
-                WHERE id = :userId
-                """;
-        return jdbcClient.sql(sql).param("passwordHash", passwordHash).param("userId", userId).update() == 1;
-    }
-
-    public Optional<User> findById(UUID id) {
-        String sql = "SELECT id, email, display_name, created_at FROM users WHERE id = :id";
-        return jdbcClient.sql(sql)
-                .param("id", id)
-                .query(UserRepository::mapRow)
-                .optional();
-    }
-
-    private static User mapRow(ResultSet rs, int rowNum) throws SQLException {
-        return new User(
-                rs.getObject("id", UUID.class),
-                rs.getString("email"),
-                rs.getString("display_name"),
-                rs.getTimestamp("created_at").toInstant());
-    }
-
+    // Trả về số dòng đã sửa: 0 = không có user này (đã bị xoá)
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(nativeQuery = true, value = """
+            UPDATE users
+            SET password_hash = :passwordHash,
+                email_verified_at = COALESCE(email_verified_at, now())
+            WHERE id = :userId
+            """)
+    int updatePassword(UUID userId, String passwordHash);
 }

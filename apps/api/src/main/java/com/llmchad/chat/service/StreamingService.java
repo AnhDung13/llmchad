@@ -26,9 +26,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.llmchad.chat.dto.LLMMessage;
 import com.llmchad.chat.dto.LLMRequestDTO;
 import com.llmchad.chat.dto.MessageRequest;
+import com.llmchad.chat.entity.MessageEntity;
 import com.llmchad.chat.model.Message;
 import com.llmchad.chat.repository.ConversationRepository;
-import com.llmchad.chat.repository.MessageRepositoriy;
+import com.llmchad.chat.repository.MessageRepository;
 import com.llmchad.common.MessageKey;
 
 import tools.jackson.databind.JsonNode;
@@ -40,7 +41,7 @@ public class StreamingService {
     private static final Duration STREAM_TTL = Duration.ofMinutes(5);
 
     private final RestClient llmRestClient;
-    private final MessageRepositoriy messageRepositoriy;
+    private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
     private final ConversationService conversationService;
     private final ObjectMapper objectMapper;
@@ -48,10 +49,10 @@ public class StreamingService {
     private final TaskExecutor executor;
     private final String model;
 
-    public StreamingService(MessageRepositoriy messageRepositoriy, ConversationRepository conversationRepository,
+    public StreamingService(MessageRepository messageRepository, ConversationRepository conversationRepository,
             ConversationService conversationService, RestClient llmRestClient, ObjectMapper objectMapper,
             StringRedisTemplate redisTemplate, TaskExecutor executor, @Value("${app.llm.model}") String model) {
-        this.messageRepositoriy = messageRepositoriy;
+        this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.conversationService = conversationService;
         this.llmRestClient = llmRestClient;
@@ -64,8 +65,10 @@ public class StreamingService {
     public SseEmitter stream(UUID userId, UUID convoId, MessageRequest req) {
 
         conversationService.getConversation(userId, convoId);
-        Message userMessage = messageRepositoriy.insertMessage(convoId, "user", req.content(), null);
-        List<LLMMessage> history = messageRepositoriy.getMessages(convoId).stream()
+        // saveAndFlush: INSERT chạy ngay để có id và created_at (DB sinh) trả về
+        Message userMessage = messageRepository.saveAndFlush(new MessageEntity(convoId, "user", req.content(), null))
+                .toModel();
+        List<LLMMessage> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(convoId).stream()
                 .map(m -> new LLMMessage(m.role(), m.content()))
                 .toList();
 
@@ -173,9 +176,9 @@ public class StreamingService {
                     }
                 }
 
-                Message assistantMessage = messageRepositoriy.insertMessage(convoId, "assistant", fullText.toString(),
-                        fullReasoning.isEmpty() ? null : fullReasoning.toString());
-                conversationRepository.touchConversation(convoId);
+                Message assistantMessage = messageRepository.saveAndFlush(new MessageEntity(convoId, "assistant",
+                        fullText.toString(), fullReasoning.isEmpty() ? null : fullReasoning.toString())).toModel();
+                conversationRepository.touch(convoId);
                 redisTemplate.opsForStream().add(key,
                         Map.of("type", "done", "message", objectMapper.writeValueAsString(assistantMessage)));
                 return null;

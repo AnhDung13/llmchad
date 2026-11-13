@@ -1,65 +1,47 @@
 package com.llmchad.chat.repository;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.transaction.annotation.Transactional;
 
+import com.llmchad.chat.entity.ConversationEntity;
 import com.llmchad.chat.model.Conversation;
-import com.llmchad.common.Paging;
 
-@Repository
-public class ConversationRepository {
-    private final JdbcClient jdbcClient;
+public interface ConversationRepository extends JpaRepository<ConversationEntity, UUID> {
 
-    public ConversationRepository(JdbcClient jdbcClient) {
-        this.jdbcClient = jdbcClient;
-    }
+    /**
+     * WHERE id = ? AND user_id = ?, trả thẳng record Conversation (DTO projection, xem UserRepository.findUserById).
+     * Projection đọc thẳng từ DB, không đi qua entity Hibernate đang giữ trong bộ nhớ.
+     */
+    Optional<Conversation> findByIdAndUserId(UUID id, UUID userId);
 
-    public Optional<Conversation> findById(UUID userId, UUID convoId) {
-        String sql = "SELECT id, title, created_at, modified_at from conversations WHERE id = :id AND user_id = :userId";
-        return jdbcClient.sql(sql).param("userId", userId).param("id", convoId).query(ConversationRepository::mapRow)
-                .optional();
-    }
+    /** Pageable thêm LIMIT/OFFSET. Trả List thay vì Page nên Spring Data không chạy thêm câu COUNT(*) */
+    List<Conversation> findByUserIdOrderByModifiedAtDesc(UUID userId, Pageable pageable);
 
-    public List<Conversation> getConversations(UUID userId, Paging payload) {
-        long offset = (long) payload.size() * (payload.page() - 1);
-        String sql = "SELECT id, title, created_at, modified_at from conversations WHERE user_id = :userId ORDER BY modified_at DESC LIMIT :size OFFSET :offset ";
-        return jdbcClient.sql(sql).param("userId", userId).param("size", payload.size()).param("offset", offset)
-                .query(ConversationRepository::mapRow).list();
-    }
+    /**
+     * UPDATE thẳng, không load entity, nên @Generated của modifiedAt không chạy: phải tự gán.
+     * Native SQL thay vì JPQL vì CURRENT_TIMESTAMP trong JPQL bị Hibernate dịch thành localtimestamp (giờ không kèm
+     * múi giờ, Postgres phải đổi lại theo múi giờ của session), còn now() trả đúng thời điểm như mọi chỗ khác.
+     * Xem UserRepository về @Modifying và @Transactional.
+     */
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(nativeQuery = true, value = "UPDATE conversations SET modified_at = now() WHERE id = :id")
+    void touch(UUID id);
 
-    public Conversation insertConversation(UUID userId, String title) {
-        String sql = "INSERT INTO conversations (user_id, title) VALUES (:userId, :title) RETURNING id, title, created_at, modified_at";
-        return jdbcClient.sql(sql).param("userId", userId)
-                .param("title", title)
-                .query(ConversationRepository::mapRow).single();
-    }
-
-    public Optional<Conversation> updateConversation(UUID userId, UUID convoId, String title) {
-        String sql = "UPDATE conversations SET title = :title, modified_at = now() WHERE id = :id AND user_id = :userId RETURNING id, title, created_at, modified_at";
-        return jdbcClient.sql(sql).param("userId", userId).param("id", convoId).param("title", title)
-                .query(ConversationRepository::mapRow).optional();
-    }
-
-    public void touchConversation(UUID convoId) {
-        String sql = "UPDATE conversations SET modified_at = now() WHERE id = :id";
-        jdbcClient.sql(sql).param("id", convoId).update();
-    }
-
-    public boolean deleteConversation(UUID userId, UUID convoId) {
-        String sql = "DELETE FROM conversations WHERE id = :id AND user_id = :userId";
-        return jdbcClient.sql(sql).param("userId", userId).param("id", convoId).update() > 0;
-    }
-
-    private static Conversation mapRow(ResultSet rs, int rowNum) throws SQLException {
-        return new Conversation(rs.getObject("id", UUID.class),
-                rs.getString("title"), rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("modified_at").toInstant());
-    }
-
+    /**
+     * Có @Query nên Spring Data không đọc tên method nữa. Không dùng derived delete (bỏ @Query): kiểu đó SELECT
+     * entity ra rồi xoá từng cái. Ở đây một câu DELETE, trả số dòng đã xoá (0 = không có hoặc không phải của user).
+     * Tin nhắn bị xoá theo nhờ ON DELETE CASCADE trong DB.
+     */
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("DELETE FROM ConversationEntity c WHERE c.id = :id AND c.userId = :userId")
+    int deleteByIdAndUserId(UUID id, UUID userId);
 }

@@ -21,10 +21,12 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import com.llmchad.auth.entity.UserEntity;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 import com.llmchad.auth.repository.UserRepository;
 import com.llmchad.common.HashUtils;
+import com.llmchad.support.TestEntities;
 
 class OAuthLoginServiceTest {
 
@@ -45,15 +47,35 @@ class OAuthLoginServiceTest {
         return new User(UUID.randomUUID(), "an@example.com", "An", createdAt);
     }
 
+    /** User mà service vừa tạo (tham số truyền vào saveAndFlush) */
+    private UserEntity createdUser() {
+        ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
+        verify(userRepository).saveAndFlush(captor.capture());
+        return captor.getValue();
+    }
+
+    private void verifyLinked(UUID userId, String provider, String providerUserId) {
+        ArgumentCaptor<UserIdentityEntity> captor = ArgumentCaptor.forClass(UserIdentityEntity.class);
+        verify(identityRepository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue())
+                .extracting(UserIdentityEntity::getUserId, UserIdentityEntity::getProvider,
+                        UserIdentityEntity::getProviderUserId)
+                .containsExactly(userId, provider, providerUserId);
+    }
+
+    private void stubCreateUser(User created) {
+        when(userRepository.saveAndFlush(any(UserEntity.class))).thenReturn(TestEntities.savedUser(created, null));
+    }
+
     @Test
     void alreadyLinked_returnsLinkedUserWithoutTouchingEmail() {
         User linked = user(Instant.now());
         when(identityRepository.findUserId("github", "42")).thenReturn(Optional.of(linked.id()));
-        when(userRepository.findById(linked.id())).thenReturn(Optional.of(linked));
+        when(userRepository.findUserById(linked.id())).thenReturn(Optional.of(linked));
 
         assertThat(service.findOrCreateUser("github", "42", "an@example.com", "An")).isEqualTo(linked);
         verify(userRepository, never()).findCredentialsByEmail(anyString());
-        verify(identityRepository, never()).insert(any(), anyString(), anyString());
+        verify(identityRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -68,7 +90,8 @@ class OAuthLoginServiceTest {
 
         assertThat(result).isEqualTo(existing);
         verify(userRepository).markEmailVerifiedByProvider(existing.id());
-        verify(identityRepository).insert(existing.id(), "google", "sub-1");
+        verify(userRepository, never()).saveAndFlush(any());
+        verifyLinked(existing.id(), "google", "sub-1");
     }
 
     @Test
@@ -76,21 +99,24 @@ class OAuthLoginServiceTest {
         User created = user(Instant.now());
         when(identityRepository.findUserId("github", "42")).thenReturn(Optional.empty());
         when(userRepository.findCredentialsByEmail("an@example.com")).thenReturn(Optional.empty());
-        when(userRepository.insertUser("an@example.com", null, "An")).thenReturn(created);
+        stubCreateUser(created);
 
         assertThat(service.findOrCreateUser("github", "42", "An@example.com", "An")).isEqualTo(created);
-        verify(identityRepository).insert(created.id(), "github", "42");
+        assertThat(createdUser())
+                .extracting(UserEntity::getEmail, UserEntity::getPasswordHash, UserEntity::getDisplayName)
+                .containsExactly("an@example.com", null, "An");
+        verifyLinked(created.id(), "github", "42");
     }
 
     @Test
     void newPerson_blankName_usesEmailLocalPart() {
         when(identityRepository.findUserId("github", "42")).thenReturn(Optional.empty());
         when(userRepository.findCredentialsByEmail("an@example.com")).thenReturn(Optional.empty());
-        when(userRepository.insertUser(eq("an@example.com"), eq(null), anyString())).thenReturn(user(Instant.now()));
+        stubCreateUser(user(Instant.now()));
 
         service.findOrCreateUser("github", "42", "an@example.com", "  ");
 
-        verify(userRepository).insertUser("an@example.com", null, "an");
+        assertThat(createdUser().getDisplayName()).isEqualTo("an");
     }
 
     @Test
@@ -99,11 +125,11 @@ class OAuthLoginServiceTest {
         String name = "a".repeat(255) + "😎" + "bcd";
         when(identityRepository.findUserId("github", "42")).thenReturn(Optional.empty());
         when(userRepository.findCredentialsByEmail("an@example.com")).thenReturn(Optional.empty());
-        when(userRepository.insertUser(eq("an@example.com"), eq(null), anyString())).thenReturn(user(Instant.now()));
+        stubCreateUser(user(Instant.now()));
 
         service.findOrCreateUser("github", "42", "an@example.com", name);
 
-        verify(userRepository).insertUser("an@example.com", null, "a".repeat(255) + "😎");
+        assertThat(createdUser().getDisplayName()).isEqualTo("a".repeat(255) + "😎");
     }
 
     @Test

@@ -7,22 +7,25 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DuplicateKeyException;
 
+import com.llmchad.config.JpaConfig;
+import com.llmchad.auth.entity.UserEntity;
 import com.llmchad.auth.model.User;
 import com.llmchad.auth.model.UserCredentials;
 
 /**
- * @JdbcTest chỉ dựng DataSource + JdbcClient + Flyway, mỗi test chạy trong transaction và rollback ở cuối.
+ * @DataJpaTest chỉ dựng DataSource + JPA (Hibernate) + các Spring Data repository (+ JdbcClient), mỗi test chạy
+ * trong transaction và rollback ở cuối. Không cần @Import: repository là interface, Spring Data tự tạo bean.
  * replace = NONE: dùng đúng PostgreSQL trong application.properties (docker compose up -d db),
  * không thay bằng DB nhúng.
  */
-@JdbcTest
+@DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(UserRepository.class)
+@Import(JpaConfig.class)
 class UserRepositoryTest {
 
     @Autowired
@@ -32,32 +35,38 @@ class UserRepositoryTest {
         return "user-" + UUID.randomUUID() + "@example.com";
     }
 
-    @Test
-    void existEmail_beforeAndAfterInsert() {
-        String email = randomEmail();
-        assertThat(userRepository.existEmail(email)).isFalse();
-
-        userRepository.insertUser(email, "hash", "An");
-
-        assertThat(userRepository.existEmail(email)).isTrue();
+    // Giống cách AuthService / OAuthLoginService tạo user
+    private User insertUser(String email, String passwordHash, String displayName) {
+        return userRepository.saveAndFlush(new UserEntity(email, passwordHash, displayName)).toModel();
     }
 
     @Test
-    void insertUser_returnsCreatedUser() {
+    void existsByEmail_beforeAndAfterInsert() {
+        String email = randomEmail();
+        assertThat(userRepository.existsByEmail(email)).isFalse();
+
+        insertUser(email, "hash", "An");
+
+        assertThat(userRepository.existsByEmail(email)).isTrue();
+    }
+
+    @Test
+    void saveAndFlush_returnsCreatedUserWithDbGeneratedFields() {
         String email = randomEmail();
 
-        User created = userRepository.insertUser(email, "hash", "An");
+        User created = insertUser(email, "hash", "An");
 
         assertThat(created.id()).isNotNull();
         assertThat(created.email()).isEqualTo(email);
         assertThat(created.displayName()).isEqualTo("An");
+        // created_at do DB sinh (current_timestamp), Hibernate đọc lại sau INSERT
         assertThat(created.createdAt()).isNotNull();
     }
 
     @Test
     void findCredentialsByEmail_returnsUserAndHash() {
         String email = randomEmail();
-        userRepository.insertUser(email, "hash", "An");
+        insertUser(email, "hash", "An");
 
         UserCredentials creds = userRepository.findCredentialsByEmail(email).orElseThrow();
 
@@ -74,31 +83,32 @@ class UserRepositoryTest {
     }
 
     @Test
-    void findById_existingAndMissing() {
+    void findUserById_existingAndMissing() {
         String email = randomEmail();
-        userRepository.insertUser(email, "hash", "An");
-        UUID id = userRepository.findCredentialsByEmail(email).orElseThrow().user().id();
+        User created = insertUser(email, "hash", "An");
 
-        assertThat(userRepository.findById(id)).get().extracting("email").isEqualTo(email);
-        assertThat(userRepository.findById(UUID.randomUUID())).isEmpty();
+        assertThat(userRepository.findUserById(created.id())).contains(created);
+        assertThat(userRepository.findUserById(UUID.randomUUID())).isEmpty();
     }
 
     @Test
-    void insertUser_duplicateEmail_violatesUniqueConstraint() {
+    void saveAndFlush_duplicateEmail_violatesUniqueConstraint() {
         String email = randomEmail();
-        userRepository.insertUser(email, "hash", "An");
+        insertUser(email, "hash", "An");
 
-        assertThatThrownBy(() -> userRepository.insertUser(email, "hash2", "Binh"))
+        // Spring đổi lỗi của Hibernate thành DuplicateKeyException: AuthService bắt đúng loại này
+        assertThatThrownBy(() -> insertUser(email, "hash2", "Binh"))
                 .isInstanceOf(DuplicateKeyException.class);
     }
 
     @Test
-    void updatePassword_setsNewHash_andReturnsFalseForUnknownUser() {
+    void updatePassword_setsNewHash_andReturnsZeroForUnknownUser() {
         String email = randomEmail();
-        User created = userRepository.insertUser(email, "old-hash", "An");
+        User created = insertUser(email, "old-hash", "An");
 
-        assertThat(userRepository.updatePassword(created.id(), "new-hash")).isTrue();
+        assertThat(userRepository.updatePassword(created.id(), "new-hash")).isEqualTo(1);
+        // clearAutomatically: entity cũ trong bộ nhớ đã bị xoá nên đọc lại thấy hash mới từ DB
         assertThat(userRepository.findCredentialsByEmail(email).orElseThrow().passwordHash()).isEqualTo("new-hash");
-        assertThat(userRepository.updatePassword(UUID.randomUUID(), "new-hash")).isFalse();
+        assertThat(userRepository.updatePassword(UUID.randomUUID(), "new-hash")).isZero();
     }
 }
