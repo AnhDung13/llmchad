@@ -589,7 +589,7 @@ data: {"id":"c42e...","role":"assistant","content":"**Spring Boot** là ...","re
 | `reasoning` | `{"text": "..."}` | Một đoạn suy luận của model (chỉ model có reasoning mới gửi). Frontend nối dần vào khối "Đang suy nghĩ" |
 | `delta` | `{"text": "..."}` | Một đoạn chữ mới. Frontend nối dần vào câu trả lời |
 | `search` | `{"query": "..."}` | Model gọi tool `web_search`, backend bắt đầu tìm với `query` này. Frontend hiện "Đang tìm: …" |
-| `sources` | `{"sources": Source[]}` | Kết quả của lần tìm vừa rồi. Frontend nối vào danh sách nguồn |
+| `sources` | `{"sources": Source[]}` | Các nguồn **mới** của lần tìm vừa rồi (URL đã có thì không gửi lại). Frontend nối vào cuối danh sách nguồn |
 | `done` | `Message` | Câu trả lời đầy đủ, đã lưu DB. Kết thúc stream |
 | `error` | `{"message": "..."}` | Lỗi giữa chừng (ví dụ LLM lỗi). Kết thúc stream |
 
@@ -644,7 +644,17 @@ Response (chỉ các field cần dùng):
 TinyFish: `GET https://api.search.tinyfish.ai?query=...`, header `X-API-Key: <TINY_FISH_API_KEY>`. Response có
 `results[]` với `title`, `url`, `snippet` (không có tham số giới hạn số kết quả, backend tự lấy 5 kết quả đầu).
 
-Cả hai được đưa về cùng dạng `{title, url, content}`. Gửi cho model cả ba field; lưu và gửi cho frontend chỉ `title` + `url`.
+Cả hai được đưa về cùng dạng `{title, url, content}`. Gửi cho model cả ba field (`content` cắt còn 600 ký tự); lưu và gửi cho frontend chỉ `title` + `url`.
+
+### Trích dẫn
+
+Mỗi kết quả gửi cho model có thêm `id`: số thứ tự 1, 2, 3… liên tục qua mọi lần tìm trong một lượt trả lời
+(URL đã gặp thì dùng lại số cũ). Vì vậy `id` = vị trí trong `Message.sources` + 1. Model được yêu cầu ghi `[id]`
+ở cuối câu dùng nguồn đó, ví dụ `Giá vàng là 3 856 USD/ounce [1][3].`, không ghi URL.
+
+Frontend đổi `[n]`, `[n, m]` và kiểu `【n】` / `【n†…】` của gpt-oss (trừ trong code) thành pill tên miền trỏ tới
+`sources[n - 1]`; số nằm ngoài danh sách thì giữ nguyên chữ. Bấm pill mở trang luôn. Danh sách nguồn đầy đủ chỉ hiện
+khi đã trả lời xong, thu gọn mặc định.
 
 ---
 

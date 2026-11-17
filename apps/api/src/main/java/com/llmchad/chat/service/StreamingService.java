@@ -8,7 +8,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -52,6 +51,10 @@ public class StreamingService {
     /** Số lần gọi LLM tối đa trong một lượt trả lời. Vòng cuối không gửi tools để model buộc phải trả lời */
     private static final int MAX_ROUNDS = 3;
     private static final String WEB_SEARCH = "web_search";
+    /** Mỗi đoạn trích gửi cho model tối đa bấy nhiêu ký tự: kết quả search lặp lại trong mọi vòng sau, dễ vượt giới hạn token/phút */
+    private static final int MAX_CONTENT_CHARS = 600;
+    private static final String CITE_HINT = "Cite every fact you use from these results with its id in square brackets "
+            + "at the end of the sentence, e.g. [1] or [2][4]. Do not write URLs.";
     /** Vòng cuối không có tools: không nhắc thì model hay vẫn muốn tìm tiếp và trả về rỗng */
     private static final String FINAL_ROUND_PROMPT = """
             You cannot search any more. Answer the user now using the search results above. \
@@ -184,10 +187,13 @@ public class StreamingService {
                     return;
                 }
                 boolean allowTools = searchProvider != null && round < MAX_ROUNDS - 1;
+                // Nhắc ở cuối request (không lưu vào messages): model nhỏ hay quên trích dẫn, và vòng cuối hay đòi tìm tiếp
                 List<LLMMessage> request = messages;
-                if (searchProvider != null && !allowTools) {
+                String reminder = (sources.isEmpty() ? "" : CITE_HINT + " ")
+                        + (searchProvider != null && !allowTools ? FINAL_ROUND_PROMPT : "");
+                if (!reminder.isBlank()) {
                     request = new ArrayList<>(messages);
-                    request.add(new LLMMessage("system", FINAL_ROUND_PROMPT));
+                    request.add(new LLMMessage("system", reminder.strip()));
                 }
                 Round result = streamOnce(key, request, allowTools, stopped, fullText, fullReasoning);
                 if (result == null) {
@@ -341,10 +347,44 @@ public class StreamingService {
             return toolError("Web search failed, answer from your own knowledge and say so");
         }
 
-        List<Source> found = results.stream().map(r -> new Source(r.title(), r.url())).toList();
-        sources.addAll(found);
-        addSources(key, found);
-        return objectMapper.writeValueAsString(Map.of("query", query, "results", results));
+        // Số của một nguồn = vị trí của nó trong `sources` + 1, giữ nguyên qua mọi lần tìm của lượt trả lời,
+        // nên [n] model ghi trong câu trả lời khớp với Message.sources[n - 1] ở frontend. URL trùng thì dùng lại số cũ.
+        List<Source> added = new ArrayList<>();
+        List<CitedResult> forModel = new ArrayList<>();
+        for (SearchResult r : results) {
+            int id = indexOfUrl(sources, r.url()) + 1;
+            if (id == 0) {
+                Source source = new Source(r.title(), r.url());
+                sources.add(source);
+                added.add(source);
+                id = sources.size();
+            }
+            forModel.add(new CitedResult(id, r.title(), r.url(), truncate(r.content(), MAX_CONTENT_CHARS)));
+        }
+        // Chỉ gửi nguồn mới: frontend nối vào cuối danh sách, nên thứ tự (và số) khớp với backend
+        addSources(key, added);
+        return objectMapper.writeValueAsString(new ToolOutput(query, CITE_HINT, forModel));
+    }
+
+    /** Kết quả search gửi cho model, kèm số để trích dẫn */
+    private record CitedResult(int id, String title, String url, String content) {
+    }
+
+    /** Nội dung tin role=tool. `instructions` nhắc lại cách trích dẫn ngay cạnh dữ liệu: model nhỏ hay quên system prompt */
+    private record ToolOutput(String query, String instructions, List<CitedResult> results) {
+    }
+
+    private static String truncate(String text, int max) {
+        return text.length() <= max ? text : text.substring(0, max) + "…";
+    }
+
+    private static int indexOfUrl(List<Source> sources, String url) {
+        for (int i = 0; i < sources.size(); i++) {
+            if (sources.get(i).url().equals(url)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void addSources(String key, List<Source> found) {
@@ -356,22 +396,20 @@ public class StreamingService {
         return objectMapper.writeValueAsString(Map.of("error", message));
     }
 
-    /** Bỏ trùng theo url (nhiều lần tìm có thể ra cùng trang). null nếu không có nguồn nào */
+    /** `sources` đã không trùng url (xem runTool). null nếu không có nguồn nào */
     private String sourcesJson(List<Source> sources) {
-        if (sources.isEmpty()) {
-            return null;
-        }
-        Map<String, Source> byUrl = new LinkedHashMap<>();
-        sources.forEach(src -> byUrl.putIfAbsent(src.url(), src));
-        return objectMapper.writeValueAsString(byUrl.values());
+        return sources.isEmpty() ? null : objectMapper.writeValueAsString(sources);
     }
 
     private static String webSearchPrompt() {
         return """
                 You have a web_search tool. Today is %s (UTC).
                 Use it when the question needs recent, time-sensitive or specific factual information you are not sure about; \
-                otherwise answer directly. When you use search results, cite them inline as markdown links [title](url). \
-                Answer in the language of the user's question.""".formatted(LocalDate.now(ZoneOffset.UTC));
+                otherwise answer directly. Answer in the language of the user's question.
+                Citations are required: every search result has a numeric id, and every sentence that uses \
+                a search result must end with the id(s) in square brackets, for example: \
+                "Giá vàng thế giới hôm nay là 3 856 USD/ounce, giảm 0,3 %% [1][3]." \
+                Do not write URLs, markdown links or a list of sources; the app turns the ids into links.""".formatted(LocalDate.now(ZoneOffset.UTC));
     }
 
     private static String textOf(JsonNode node) {
