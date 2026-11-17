@@ -1,6 +1,7 @@
 import { ArrowDownIcon, CheckIcon, ChevronRightIcon, CopyIcon, GlobeIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { hostOf } from '../lib/citations'
 import type { Source } from '../lib/types'
 import { Markdown } from './Markdown'
 
@@ -67,11 +68,12 @@ export function MessageList({ messages }: { messages: UiMessage[] }) {
                 {m.reasoning && <Reasoning text={m.reasoning} thinking={!!m.streaming && !m.content} />}
                 {m.streaming && m.searching && <Searching query={m.searching} />}
                 {m.content ? (
-                  <Markdown text={m.content} streaming={m.streaming} />
+                  <Markdown text={m.content} streaming={m.streaming} sources={m.sources} />
                 ) : m.streaming && !m.reasoning && !m.searching ? (
                   <PendingDot />
                 ) : null}
-                {m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
+                {/* Danh sách nguồn chỉ hiện khi đã trả lời xong; trong lúc stream đã có pill ngay trong câu */}
+                {!m.streaming && m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
                 {m.stopped && <p className="mt-2 text-sm text-neutral-500">{t('stopped')}</p>}
                 {m.error && (
                   <p role="alert" className="mt-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
@@ -141,38 +143,40 @@ function Searching({ query }: { query: string }) {
   )
 }
 
-function hostOf(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
-}
-
-/** Các trang model đã đọc khi tìm trên web, dạng chip nhỏ dưới câu trả lời */
+/** Danh sách nguồn dưới câu trả lời, thu gọn mặc định; số thứ tự khớp với [n] model ghi trong câu */
 function Sources({ sources }: { sources: Source[] }) {
   const { t } = useTranslation('thread')
-  // Nhiều lần tìm có thể ra trùng trang
-  const unique = sources.filter((s, i) => sources.findIndex((o) => o.url === s.url) === i)
+  const [open, setOpen] = useState(false)
   return (
     <div className="mt-3">
-      <p className="mb-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t('sources')}</p>
-      <ul className="flex flex-wrap gap-1.5">
-        {unique.map((s) => (
-          <li key={s.url} className="min-w-0">
-            <a
-              href={s.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={s.title || s.url}
-              className="flex max-w-[16rem] items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-900 dark:border-night-700 dark:bg-night-800 dark:text-neutral-300 dark:hover:border-violet-500/40 dark:hover:bg-violet-500/10 dark:hover:text-violet-100"
-            >
-              <span className="shrink-0 font-medium">{hostOf(s.url)}</span>
-              {s.title && <span className="truncate text-neutral-400 dark:text-neutral-500">{s.title}</span>}
-            </a>
-          </li>
-        ))}
-      </ul>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-900 dark:border-night-700 dark:text-neutral-300 dark:hover:border-violet-500/40 dark:hover:bg-violet-500/10 dark:hover:text-violet-100"
+      >
+        <GlobeIcon size={13} />
+        {t('sourcesCount', { count: sources.length })}
+        <ChevronRightIcon size={14} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && (
+        <ol className="mt-2 flex flex-col gap-1">
+          {sources.map((s, i) => (
+            <li key={s.url} className="min-w-0">
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-baseline gap-2 rounded-lg px-2 py-1 text-sm transition hover:bg-violet-50 dark:hover:bg-violet-500/10"
+              >
+                <span className="w-5 shrink-0 text-right text-xs text-neutral-400 tabular-nums">{i + 1}</span>
+                <span className="min-w-0 truncate text-neutral-800 dark:text-neutral-200">{s.title || s.url}</span>
+                <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{hostOf(s.url)}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   )
 }

@@ -17,7 +17,8 @@
   "webSearchNone": "Không tìm trên web",
   "webSearchWith": "Tìm trên web bằng {{provider}}",
   "searching": "Đang tìm: {{query}}",
-  "sources": "Nguồn",
+  "sourcesCount_one": "{{count}} nguồn",
+  "sourcesCount_other": "{{count}} nguồn",
   "markdown": {
     "copyCode": "Chép code",
     "copied": "Đã chép",

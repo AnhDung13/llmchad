@@ -17,7 +17,8 @@
   "webSearchNone": "No web search",
   "webSearchWith": "Search the web with {{provider}}",
   "searching": "Searching: {{query}}",
-  "sources": "Sources",
+  "sourcesCount_one": "{{count}} source",
+  "sourcesCount_other": "{{count}} sources",
   "markdown": {
     "copyCode": "Copy code",
     "copied": "Copied",
