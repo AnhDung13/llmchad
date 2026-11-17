@@ -588,6 +588,7 @@ data: {"id":"c42e...","role":"assistant","content":"**Spring Boot** là ...","re
 |---|---|---|
 | `reasoning` | `{"text": "..."}` | Một đoạn suy luận của model (chỉ model có reasoning mới gửi). Frontend nối dần vào khối "Đang suy nghĩ" |
 | `delta` | `{"text": "..."}` | Một đoạn chữ mới. Frontend nối dần vào câu trả lời |
+| `title` | `{"title": "..."}` | Tên conversation backend vừa tự đặt (chỉ ở tin nhắn đầu tiên), gửi ngay trước `done`. Frontend đổi tên trong sidebar |
 | `search` | `{"query": "..."}` | Model gọi tool `web_search`, backend bắt đầu tìm với `query` này. Frontend hiện "Đang tìm: …" |
 | `sources` | `{"sources": Source[]}` | Các nguồn **mới** của lần tìm vừa rồi (URL đã có thì không gửi lại). Frontend nối vào cuối danh sách nguồn |
 | `done` | `Message` | Câu trả lời đầy đủ, đã lưu DB. Kết thúc stream |
@@ -658,6 +659,17 @@ khi đã trả lời xong, thu gọn mặc định.
 
 ---
 
+## Bước 12 – Tự đặt tên conversation
+
+Frontend vẫn tạo conversation với tên tạm ("Cuộc trò chuyện mới"). Khi gửi **tin nhắn đầu tiên** của conversation,
+backend gọi LLM thêm một lần (không stream, luôn gửi `reasoning_effort: "low"`)
+để đặt tiêu đề ≤ 6 từ, cùng ngôn ngữ với tin nhắn, chạy song song với lúc model trả lời.
+
+- Xong câu trả lời thì chờ tiêu đề tối đa 5 giây, lưu vào `conversations.title` (không đổi `modified_at`), rồi gửi event `title` trước `done`.
+- LLM lỗi, quá hạn chờ, hoặc người dùng bấm Dừng: giữ tên tạm, không gửi `title`.
+
+---
+
 ## Thứ tự làm và endpoint cần có
 
 | Bước | Endpoint | Giao diện dùng được |
@@ -671,3 +683,4 @@ khi đã trả lời xong, thu gọn mặc định.
 | 8 | `POST /api/auth/verify-email`, `POST /api/auth/resend-verification` | Màn "Kiểm tra hộp thư" (nhập mã) sau khi đăng ký |
 | 9 | OAuth của Spring + `POST /api/auth/oauth/exchange` | Nút Google / GitHub, trang `/oauth/callback` |
 | 11 | `GET /api/search/providers`, `searchProvider`, event `search`/`sources`, `Message.sources` | Menu chọn provider web search ở ô nhập, danh sách nguồn dưới câu trả lời |
+| 12 | Event `title` | Sidebar tự đổi tên conversation sau tin nhắn đầu tiên |

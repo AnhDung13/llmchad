@@ -46,6 +46,12 @@ public class ConversationRepository {
                 .query(ConversationRepository::mapRow).optional();
     }
 
+    /** Đổi tên do hệ thống (tự đặt tên): không kiểm tra user, không đổi modified_at */
+    public void setTitle(UUID convoId, String title) {
+        String sql = "UPDATE conversations SET title = :title WHERE id = :id";
+        jdbcClient.sql(sql).param("id", convoId).param("title", title).update();
+    }
+
     public void touchConversation(UUID convoId) {
         String sql = "UPDATE conversations SET modified_at = now() WHERE id = :id";
         jdbcClient.sql(sql).param("id", convoId).update();
