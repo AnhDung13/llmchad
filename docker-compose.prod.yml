@@ -56,6 +56,9 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:?not_found}
       LLM_API_KEY: ${LLM_API_KEY:?not_found}
       LLM_MODEL: ${LLM_MODEL:?not_found}
+      # Web search; provider nào không đặt key thì người dùng không chọn được
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      TINY_FISH_API_KEY: ${TINY_FISH_API_KEY:-}
 
       # Mail mã xác minh (Gmail SMTP, VALIDATION_PWD là App Password 16 ký tự)
       VALIDATION_MAIL: ${VALIDATION_MAIL:?not_found}

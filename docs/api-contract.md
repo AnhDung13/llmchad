@@ -124,7 +124,13 @@ type Message = {
   role: "user" | "assistant"
   content: string     // assistant trả về Markdown
   reasoning: string | null  // phần suy luận của model; null với tin user hoặc model không trả reasoning
+  sources: Source[] | null  // các trang web model đã đọc (web search); null nếu không search
   createdAt: string
+}
+
+type Source = {
+  title: string
+  url: string
 }
 ```
 
@@ -535,8 +541,10 @@ Response `200 OK`: `Message[]`, **cũ nhất trước** (`createdAt` tăng dần
 
 Request:
 ```json
-{ "content": "Spring Boot là gì?" }
+{ "content": "Spring Boot là gì?", "searchProvider": null }
 ```
+
+- `searchProvider`: không bắt buộc. `"tavily"` hoặc `"tinyfish"` thì cho model dùng tool `web_search` với provider đó (xem [Bước 11](#bước-11--web-search)). `null`, bỏ trống, hoặc provider chưa có API key thì không search.
 
 Frontend gửi header `Accept: text/event-stream, application/json`. Backend được chọn **một trong hai** kiểu trả lời. Frontend xử lý được cả hai, nên bạn làm kiểu A trước rồi nâng cấp lên kiểu B.
 
@@ -580,12 +588,63 @@ data: {"id":"c42e...","role":"assistant","content":"**Spring Boot** là ...","re
 |---|---|---|
 | `reasoning` | `{"text": "..."}` | Một đoạn suy luận của model (chỉ model có reasoning mới gửi). Frontend nối dần vào khối "Đang suy nghĩ" |
 | `delta` | `{"text": "..."}` | Một đoạn chữ mới. Frontend nối dần vào câu trả lời |
+| `search` | `{"query": "..."}` | Model gọi tool `web_search`, backend bắt đầu tìm với `query` này. Frontend hiện "Đang tìm: …" |
+| `sources` | `{"sources": Source[]}` | Kết quả của lần tìm vừa rồi. Frontend nối vào danh sách nguồn |
 | `done` | `Message` | Câu trả lời đầy đủ, đã lưu DB. Kết thúc stream |
 | `error` | `{"message": "..."}` | Lỗi giữa chừng (ví dụ LLM lỗi). Kết thúc stream |
 
 Gợi ý phía Spring: `SseEmitter` với `SseEmitter.event().name("delta").data(...)`.
 
 Người dùng bấm **Dừng** thì frontend huỷ request (`AbortController`). Phía Spring sẽ thấy kết nối bị đóng (`IOException` khi gửi tiếp), lúc đó nên ngừng đọc từ LLM.
+
+---
+
+## Bước 11 – Web search
+
+Khi request có `searchProvider`, backend cho model dùng một tool `web_search` (function calling kiểu OpenAI)
+và chạy nó bằng provider người dùng đã chọn. Model tự quyết có cần tìm hay không.
+
+| `searchProvider` | Biến môi trường | API |
+|---|---|---|
+| `tavily` | `TAVILY_API_KEY` | `POST https://api.tavily.com/search` |
+| `tinyfish` | `TINY_FISH_API_KEY` | `GET https://api.search.tinyfish.ai?query=...`, header `X-API-Key` |
+
+Provider nào để trống key thì coi như không tồn tại.
+
+### `GET /api/search/providers`
+
+Response `200 OK`: các provider đã có key, ví dụ `["tavily", "tinyfish"]`. Frontend chỉ hiện những lựa chọn này; mảng rỗng thì ẩn nút web search.
+
+Luồng một lượt trả lời:
+
+1. Gọi LLM với `messages` + `tools` (một function `web_search(query: string)`), `stream: true`.
+2. Đọc stream như cũ. Ngoài `delta.content`/`reasoning`, gom các mảnh `delta.tool_calls[i]`
+   (theo `index`: `id` và `function.name` đến ở mảnh đầu, `function.arguments` là chuỗi JSON đến từng mảnh, phải nối lại).
+3. Stream hết mà có tool call → với mỗi call: gửi event `search`, gọi Tavily, gửi event `sources`.
+   Thêm vào `messages`: một tin `assistant` có `tool_calls`, rồi mỗi call một tin `role: "tool"` (`tool_call_id` + `content` là kết quả).
+   Quay lại bước 1. Giới hạn số vòng (ví dụ 3); vòng cuối không gửi `tools` để model buộc phải trả lời.
+4. Không còn tool call → lưu tin `assistant` (kèm `sources`, gộp mọi lần tìm), gửi `done`.
+
+Tin `assistant`/`tool` trung gian **không** lưu DB; lịch sử chỉ gồm tin `user` và câu trả lời cuối.
+
+### Provider
+
+Tavily: `POST https://api.tavily.com/search`, header `Authorization: Bearer <TAVILY_API_KEY>`:
+
+```json
+{ "query": "giá vàng hôm nay", "max_results": 5 }
+```
+
+Response (chỉ các field cần dùng):
+
+```json
+{ "results": [ { "title": "...", "url": "https://...", "content": "đoạn trích...", "score": 0.81 } ] }
+```
+
+TinyFish: `GET https://api.search.tinyfish.ai?query=...`, header `X-API-Key: <TINY_FISH_API_KEY>`. Response có
+`results[]` với `title`, `url`, `snippet` (không có tham số giới hạn số kết quả, backend tự lấy 5 kết quả đầu).
+
+Cả hai được đưa về cùng dạng `{title, url, content}`. Gửi cho model cả ba field; lưu và gửi cho frontend chỉ `title` + `url`.
 
 ---
 
@@ -601,3 +660,4 @@ Người dùng bấm **Dừng** thì frontend huỷ request (`AbortController`).
 | 7 | `POST /api/auth/refresh`, `POST /api/auth/logout` | Không bị đăng xuất sau khi access token hết hạn |
 | 8 | `POST /api/auth/verify-email`, `POST /api/auth/resend-verification` | Màn "Kiểm tra hộp thư" (nhập mã) sau khi đăng ký |
 | 9 | OAuth của Spring + `POST /api/auth/oauth/exchange` | Nút Google / GitHub, trang `/oauth/callback` |
+| 11 | `GET /api/search/providers`, `searchProvider`, event `search`/`sources`, `Message.sources` | Menu chọn provider web search ở ô nhập, danh sách nguồn dưới câu trả lời |

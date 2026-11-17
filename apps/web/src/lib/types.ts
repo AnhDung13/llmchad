@@ -45,13 +45,22 @@ export type Message = {
   content: string
   /** Phần suy luận của model (chỉ tin assistant); null nếu model không trả reasoning */
   reasoning?: string | null
+  /** Các trang web model đã đọc khi bật web search; null nếu không search */
+  sources?: Source[] | null
   createdAt: string
 }
+
+export type Source = { title: string; url: string }
+
+/** id provider web search, khớp GET /api/search/providers */
+export type SearchProvider = 'tavily' | 'tinyfish'
 
 /** Các sự kiện frontend nhận được khi gửi một tin nhắn, dù backend trả JSON hay SSE. */
 export type ChatEvent =
   | { type: 'reasoning'; text: string }
   | { type: 'delta'; text: string }
+  | { type: 'search'; query: string }
+  | { type: 'sources'; sources: Source[] }
   | { type: 'done'; message: Message }
 
 /** Trả về từ POST /api/auth/register và /resend-verification, dùng để đếm ngược */

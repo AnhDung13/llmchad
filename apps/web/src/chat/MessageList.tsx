@@ -1,6 +1,7 @@
-import { ArrowDownIcon, CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react'
+import { ArrowDownIcon, CheckIcon, ChevronRightIcon, CopyIcon, GlobeIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { Source } from '../lib/types'
 import { Markdown } from './Markdown'
 
 export type UiMessage = {
@@ -10,6 +11,10 @@ export type UiMessage = {
   content: string
   /** Phần suy luận của model, hiện trong khối thu gọn phía trên câu trả lời */
   reasoning?: string
+  /** Câu model đang tìm trên web (giữa event `search` và `sources`) */
+  searching?: string
+  /** Các trang web model đã đọc */
+  sources?: Source[]
   streaming?: boolean
   stopped?: boolean
   error?: string
@@ -36,7 +41,7 @@ export function MessageList({ messages }: { messages: UiMessage[] }) {
     if (!el) return
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM
     if (nearBottom || last?.role === 'user') bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages.length, last?.content, last?.reasoning, last?.role])
+  }, [messages.length, last?.content, last?.reasoning, last?.searching, last?.sources?.length, last?.role])
 
   function onScroll() {
     const el = containerRef.current
@@ -60,11 +65,13 @@ export function MessageList({ messages }: { messages: UiMessage[] }) {
             ) : (
               <div key={m.key} className="group mt-2">
                 {m.reasoning && <Reasoning text={m.reasoning} thinking={!!m.streaming && !m.content} />}
+                {m.streaming && m.searching && <Searching query={m.searching} />}
                 {m.content ? (
                   <Markdown text={m.content} streaming={m.streaming} />
-                ) : m.streaming && !m.reasoning ? (
+                ) : m.streaming && !m.reasoning && !m.searching ? (
                   <PendingDot />
                 ) : null}
+                {m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
                 {m.stopped && <p className="mt-2 text-sm text-neutral-500">{t('stopped')}</p>}
                 {m.error && (
                   <p role="alert" className="mt-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
@@ -120,6 +127,52 @@ function Reasoning({ text, thinking }: { text: string; thinking: boolean }) {
           {text}
         </div>
       )}
+    </div>
+  )
+}
+
+function Searching({ query }: { query: string }) {
+  const { t } = useTranslation('thread')
+  return (
+    <div className="mb-3 flex items-center gap-2 text-[15px] text-neutral-500 dark:text-neutral-400" role="status">
+      <GlobeIcon size={16} className="shrink-0" />
+      <span className="text-shimmer truncate">{t('searching', { query })}</span>
+    </div>
+  )
+}
+
+function hostOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+/** Các trang model đã đọc khi tìm trên web, dạng chip nhỏ dưới câu trả lời */
+function Sources({ sources }: { sources: Source[] }) {
+  const { t } = useTranslation('thread')
+  // Nhiều lần tìm có thể ra trùng trang
+  const unique = sources.filter((s, i) => sources.findIndex((o) => o.url === s.url) === i)
+  return (
+    <div className="mt-3">
+      <p className="mb-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t('sources')}</p>
+      <ul className="flex flex-wrap gap-1.5">
+        {unique.map((s) => (
+          <li key={s.url} className="min-w-0">
+            <a
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={s.title || s.url}
+              className="flex max-w-[16rem] items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-900 dark:border-night-700 dark:bg-night-800 dark:text-neutral-300 dark:hover:border-violet-500/40 dark:hover:bg-violet-500/10 dark:hover:text-violet-100"
+            >
+              <span className="shrink-0 font-medium">{hostOf(s.url)}</span>
+              {s.title && <span className="truncate text-neutral-400 dark:text-neutral-500">{s.title}</span>}
+            </a>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

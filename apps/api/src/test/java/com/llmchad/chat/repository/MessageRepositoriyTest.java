@@ -18,6 +18,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 import com.llmchad.chat.model.Message;
 
+import tools.jackson.databind.json.JsonMapper;
+
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(MessageRepositoriy.class)
@@ -69,6 +71,23 @@ class MessageRepositoriyTest {
         Message msg = messageRepositoriy.insertMessage(convoId, "assistant", "Answer", "Thinking...");
 
         assertThat(msg.reasoning()).isEqualTo("Thinking...");
+    }
+
+    @Test
+    void insertMessage_assistantMessageKeepsSourcesJson() {
+        String sources = "[{\"title\": \"Spring\", \"url\": \"https://spring.io\"}]";
+        Message msg = messageRepositoriy.insertMessage(convoId, "assistant", "Answer", null, sources);
+
+        // jsonb chuẩn hoá lại khoảng trắng và thứ tự key, nên so theo cây JSON chứ không so chuỗi
+        JsonMapper json = new JsonMapper();
+        assertThat(json.readTree(msg.sources())).isEqualTo(json.readTree(sources));
+        assertThat(json.readTree(messageRepositoriy.getMessages(convoId).get(0).sources()))
+                .isEqualTo(json.readTree(sources));
+    }
+
+    @Test
+    void insertMessage_withoutSources_storesNull() {
+        assertThat(messageRepositoriy.insertMessage(convoId, "user", "Hi", null).sources()).isNull();
     }
 
     @Test
