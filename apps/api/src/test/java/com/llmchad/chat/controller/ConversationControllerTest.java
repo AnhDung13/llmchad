@@ -210,7 +210,7 @@ class ConversationControllerTest {
 
         @Test
         void messages_returnsListForUser() throws Exception {
-                Message msg = new Message(UUID.randomUUID(), "user", "Hi", null, Instant.parse("2026-01-01T00:00:00Z"));
+                Message msg = new Message(UUID.randomUUID(), "user", "Hi", null, null, Instant.parse("2026-01-01T00:00:00Z"));
                 when(messageService.getMessages(userId, convoId)).thenReturn(List.of(msg));
 
                 mockMvc.perform(get("/api/conversations/{id}/messages", convoId).with(asUser()))

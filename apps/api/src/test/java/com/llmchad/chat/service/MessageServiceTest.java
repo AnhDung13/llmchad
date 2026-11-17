@@ -40,7 +40,7 @@ class MessageServiceTest {
 
     @Test
     void getMessages_ownedConversation_returnsMessages() {
-        Message msg = new Message(UUID.randomUUID(), "user", "Hi", null, Instant.now());
+        Message msg = new Message(UUID.randomUUID(), "user", "Hi", null, null, Instant.now());
         when(conversationService.getConversation(userId, convoId))
                 .thenReturn(new Conversation(convoId, "Hello", Instant.now(), Instant.now()));
         when(messageRepositoriy.getMessages(convoId)).thenReturn(List.of(msg));
