@@ -61,6 +61,8 @@ export type ChatEvent =
   | { type: 'delta'; text: string }
   | { type: 'search'; query: string }
   | { type: 'sources'; sources: Source[] }
+  /** Backend tự đặt tên conversation sau tin nhắn đầu tiên */
+  | { type: 'title'; title: string }
   | { type: 'done'; message: Message }
 
 /** Trả về từ POST /api/auth/register và /resend-verification, dùng để đếm ngược */

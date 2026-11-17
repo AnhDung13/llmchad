@@ -10,8 +10,13 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
@@ -48,6 +53,7 @@ import tools.jackson.databind.ObjectMapper;
 public class StreamingService {
     private static final Logger log = LoggerFactory.getLogger(StreamingService.class);
     private static final Duration STREAM_TTL = Duration.ofMinutes(5);
+    private static final Duration TITLE_WAIT = Duration.ofSeconds(5);
     /** Số lần gọi LLM tối đa trong một lượt trả lời. Vòng cuối không gửi tools để model buộc phải trả lời */
     private static final int MAX_ROUNDS = 3;
     private static final String WEB_SEARCH = "web_search";
@@ -78,12 +84,14 @@ public class StreamingService {
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate redisTemplate;
     private final TaskExecutor executor;
+    private final TitleService titleService;
     private final WebSearchProviders searchProviders;
     private final String model;
 
     public StreamingService(MessageRepositoriy messageRepositoriy, ConversationRepository conversationRepository,
             ConversationService conversationService, RestClient llmRestClient, ObjectMapper objectMapper,
-            StringRedisTemplate redisTemplate, TaskExecutor executor, WebSearchProviders searchProviders,
+            StringRedisTemplate redisTemplate, TaskExecutor executor, TitleService titleService,
+            WebSearchProviders searchProviders,
             @Value("${app.llm.model}") String model) {
         this.messageRepositoriy = messageRepositoriy;
         this.conversationRepository = conversationRepository;
@@ -92,6 +100,7 @@ public class StreamingService {
         this.objectMapper = objectMapper;
         this.redisTemplate = redisTemplate;
         this.executor = executor;
+        this.titleService = titleService;
         this.searchProviders = searchProviders;
         this.model = model;
     }
@@ -105,7 +114,12 @@ public class StreamingService {
         if (searchProvider != null) {
             history.add(new LLMMessage("system", webSearchPrompt()));
         }
-        messageRepositoriy.getMessages(convoId).forEach(m -> history.add(new LLMMessage(m.role(), m.content())));
+        List<Message> stored = messageRepositoriy.getMessages(convoId);
+        stored.forEach(m -> history.add(new LLMMessage(m.role(), m.content())));
+        // Tin đầu tiên của conversation → đặt tên song song với lúc model trả lời
+        CompletableFuture<Optional<String>> title = stored.size() == 1
+                ? CompletableFuture.supplyAsync(() -> titleService.generate(req.content()), executor)
+                : null;
 
         String key = "chat:stream:" + userMessage.id();
 
@@ -115,7 +129,7 @@ public class StreamingService {
         emitter.onTimeout(() -> stopped.set(true));
         emitter.onError(e -> stopped.set(true));
 
-        executor.execute(() -> openStream(key, convoId, history, searchProvider, stopped));
+        executor.execute(() -> openStream(key, convoId, history, searchProvider, title, stopped));
         executor.execute(() -> readStream(key, emitter, stopped));
 
         return emitter;
@@ -141,6 +155,8 @@ public class StreamingService {
                     switch (type) {
                         case "reasoning", "delta" ->
                             emitter.send(SseEmitter.event().name(type).data(Map.of("text", fields.get("text"))));
+                        case "title" ->
+                            emitter.send(SseEmitter.event().name("title").data(Map.of("title", fields.get("title"))));
                         case "search" ->
                             emitter.send(SseEmitter.event().name("search").data(Map.of("query", fields.get("query"))));
                         // Đã là chuỗi JSON {"sources": [...]}, gửi nguyên văn như "done"
@@ -175,7 +191,7 @@ public class StreamingService {
      * lưu. `searchProvider` null = không cho model gọi tool.
      */
     private void openStream(String key, UUID convoId, List<LLMMessage> history, WebSearchProvider searchProvider,
-            AtomicBoolean stopped) {
+            CompletableFuture<Optional<String>> title, AtomicBoolean stopped) {
         List<LLMMessage> messages = new ArrayList<>(history);
         StringBuilder fullText = new StringBuilder();
         StringBuilder fullReasoning = new StringBuilder();
@@ -222,6 +238,11 @@ public class StreamingService {
             Message assistantMessage = messageRepositoriy.insertMessage(convoId, "assistant", fullText.toString(),
                     fullReasoning.isEmpty() ? null : fullReasoning.toString(), sourcesJson(sources));
             conversationRepository.touchConversation(convoId);
+            // Gửi title trước done: consumer dừng đọc ở done, frontend cũng tải lại danh sách ngay sau done
+            awaitTitle(key, title).ifPresent(t -> {
+                conversationRepository.setTitle(convoId, t);
+                redisTemplate.opsForStream().add(key, Map.of("type", "title", "title", t));
+            });
             redisTemplate.opsForStream().add(key,
                     Map.of("type", "done", "message", objectMapper.writeValueAsString(assistantMessage)));
         } catch (RuntimeException e) {
@@ -410,6 +431,22 @@ public class StreamingService {
                 a search result must end with the id(s) in square brackets, for example: \
                 "Giá vàng thế giới hôm nay là 3 856 USD/ounce, giảm 0,3 %% [1][3]." \
                 Do not write URLs, markdown links or a list of sources; the app turns the ids into links.""".formatted(LocalDate.now(ZoneOffset.UTC));
+    }
+
+    /** Thường đã xong từ lâu (đặt tên nhanh hơn trả lời); chờ tối đa vài giây để không giữ done quá lâu */
+    private Optional<String> awaitTitle(String key, CompletableFuture<Optional<String>> title) {
+        if (title == null) {
+            return Optional.empty();
+        }
+        try {
+            return title.get(TITLE_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException | ExecutionException e) {
+            log.warn("Title for {} not ready", key, e);
+            return Optional.empty();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
     }
 
     private static String textOf(JsonNode node) {

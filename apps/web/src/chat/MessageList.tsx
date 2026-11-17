@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { hostOf } from '../lib/citations'
 import type { Source } from '../lib/types'
+import { Favicon } from './Favicon'
 import { Markdown } from './Markdown'
 
 export type UiMessage = {
@@ -155,7 +156,7 @@ function Sources({ sources }: { sources: Source[] }) {
         aria-expanded={open}
         className="flex items-center gap-1.5 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-900 dark:border-night-700 dark:text-neutral-300 dark:hover:border-violet-500/40 dark:hover:bg-violet-500/10 dark:hover:text-violet-100"
       >
-        <GlobeIcon size={13} />
+        <SourceStack sources={sources} />
         {t('sourcesCount', { count: sources.length })}
         <ChevronRightIcon size={14} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>
@@ -170,6 +171,7 @@ function Sources({ sources }: { sources: Source[] }) {
                 className="flex items-baseline gap-2 rounded-lg px-2 py-1 text-sm transition hover:bg-violet-50 dark:hover:bg-violet-500/10"
               >
                 <span className="w-5 shrink-0 text-right text-xs text-neutral-400 tabular-nums">{i + 1}</span>
+                <Favicon url={s.url} size={14} className="self-center" />
                 <span className="min-w-0 truncate text-neutral-800 dark:text-neutral-200">{s.title || s.url}</span>
                 <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{hostOf(s.url)}</span>
               </a>
@@ -178,6 +180,20 @@ function Sources({ sources }: { sources: Source[] }) {
         </ol>
       )}
     </div>
+  )
+}
+
+/** Logo của tối đa 3 trang khác nhau, xếp chồng lên nhau như ChatGPT */
+function SourceStack({ sources }: { sources: Source[] }) {
+  const hosts = [...new Map(sources.map((s) => [hostOf(s.url), s.url])).values()].slice(0, 3)
+  return (
+    <span className="flex items-center">
+      {hosts.map((url, i) => (
+        <span key={url} className={`flex rounded-full bg-white p-px ring-1 ring-neutral-200 dark:bg-night-800 dark:ring-night-700 ${i > 0 ? '-ml-1.5' : ''}`}>
+          <Favicon url={url} size={13} className="rounded-full" />
+        </span>
+      ))}
+    </span>
   )
 }
 

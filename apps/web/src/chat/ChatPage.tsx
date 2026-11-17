@@ -171,6 +171,10 @@ export function ChatPage() {
         if (ev.type === 'reasoning') updateAi((m) => ({ ...m, reasoning: (m.reasoning ?? '') + ev.text }))
         else if (ev.type === 'delta') updateAi((m) => ({ ...m, searching: undefined, content: m.content + ev.text }))
         else if (ev.type === 'search') updateAi((m) => ({ ...m, searching: ev.query }))
+        else if (ev.type === 'title')
+          queryClient.setQueryData<Conversation[]>(keys.conversations, (prev) =>
+            prev?.map((c) => (c.id === convId ? { ...c, title: ev.title } : c)),
+          )
         else if (ev.type === 'sources') updateAi((m) => ({ ...m, searching: undefined, sources: [...(m.sources ?? []), ...ev.sources] }))
         else updateAi(() => toUi(ev.message))
       }
