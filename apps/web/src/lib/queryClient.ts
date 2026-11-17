@@ -33,6 +33,7 @@ export const queryClient = new QueryClient({
 export const keys = {
   me: ['me'] as const,
   conversations: ['conversations'] as const,
+  searchProviders: ['searchProviders'] as const,
   // Không đặt dưới ['conversations', ...]: invalidate danh sách hội thoại không được đụng tới tin nhắn đang stream
   messages: (conversationId: string) => ['messages', conversationId] as const,
 }

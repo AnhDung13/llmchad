@@ -7,7 +7,7 @@ import { api } from '../lib/api'
 import { errorMessage } from '../lib/i18n'
 import { keys } from '../lib/queryClient'
 import { useTheme } from '../lib/theme'
-import type { Conversation, Message } from '../lib/types'
+import type { Conversation, Message, SearchProvider } from '../lib/types'
 import { BrandName } from '../ui/Logo'
 import { MarqueeText } from '../ui/MarqueeText'
 import { Menu, iconButton } from '../ui/Menu'
@@ -26,9 +26,32 @@ const SUGGESTIONS: { id: string; icon: ReactNode }[] = [
 
 type DialogTarget = Pick<Conversation, 'id' | 'title'>
 
-const toUi = (m: Message): UiMessage => ({ key: String(m.id), role: m.role, content: m.content, reasoning: m.reasoning ?? undefined })
+const toUi = (m: Message): UiMessage => ({
+  key: String(m.id),
+  role: m.role,
+  content: m.content,
+  reasoning: m.reasoning ?? undefined,
+  sources: m.sources ?? undefined,
+})
 const isAbort = (err: unknown) => err instanceof DOMException && err.name === 'AbortError'
 
+// Nhớ provider web search đã chọn giữa các lần mở trang. localStorage có thể bị chặn (chế độ riêng tư) → bỏ qua
+const SEARCH_PROVIDER_KEY = 'llmchad.searchProvider'
+function readSearchProvider(): SearchProvider | null {
+  try {
+    return localStorage.getItem(SEARCH_PROVIDER_KEY) as SearchProvider | null
+  } catch {
+    return null
+  }
+}
+function saveSearchProvider(provider: SearchProvider | null) {
+  try {
+    if (provider) localStorage.setItem(SEARCH_PROVIDER_KEY, provider)
+    else localStorage.removeItem(SEARCH_PROVIDER_KEY)
+  } catch {
+    // bỏ qua
+  }
+}
 /**
  * Tin nhắn của một cuộc trò chuyện. Cache này cũng là nơi giữ tin nhắn đang stream,
  * nên staleTime: Infinity để không bao giờ có lần tải lại nào đè lên.
@@ -80,6 +103,17 @@ export function ChatPage() {
   const [deleting, setDeleting] = useState<DialogTarget | null>(null)
 
   const [streaming, setStreaming] = useState(false)
+  // Provider nào backend chưa có key thì không hiện; tải lỗi thì coi như không có provider nào (ẩn nút)
+  const searchProvidersQuery = useQuery({
+    queryKey: keys.searchProviders,
+    queryFn: ({ signal }) => api.listSearchProviders(signal),
+    staleTime: Infinity,
+  })
+  const searchProviders = searchProvidersQuery.data ?? []
+  const [pickedProvider, setPickedProvider] = useState(readSearchProvider)
+  useEffect(() => saveSearchProvider(pickedProvider), [pickedProvider])
+  // Đã chọn trước đó nhưng giờ backend không còn provider đó → coi như tắt
+  const searchProvider = pickedProvider && searchProviders.includes(pickedProvider) ? pickedProvider : null
   const [sidebarOpen, setSidebarOpen] = useState(false) // ngăn kéo trên mobile
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // thu gọn trên desktop
 
@@ -133,9 +167,11 @@ export function ChatPage() {
     streamingConvRef.current = convId
     setStreaming(true)
     try {
-      for await (const ev of api.sendMessage(convId, content, controller.signal)) {
+      for await (const ev of api.sendMessage(convId, content, searchProvider, controller.signal)) {
         if (ev.type === 'reasoning') updateAi((m) => ({ ...m, reasoning: (m.reasoning ?? '') + ev.text }))
-        else if (ev.type === 'delta') updateAi((m) => ({ ...m, content: m.content + ev.text }))
+        else if (ev.type === 'delta') updateAi((m) => ({ ...m, searching: undefined, content: m.content + ev.text }))
+        else if (ev.type === 'search') updateAi((m) => ({ ...m, searching: ev.query }))
+        else if (ev.type === 'sources') updateAi((m) => ({ ...m, searching: undefined, sources: [...(m.sources ?? []), ...ev.sources] }))
         else updateAi(() => toUi(ev.message))
       }
     } catch (err) {
@@ -279,6 +315,9 @@ export function ChatPage() {
             <h2 className="mb-8 px-4 text-center text-[28px] font-normal tracking-tight">{t('emptyHeading')}</h2>
             <Composer
               streaming={streaming}
+              searchProvider={searchProvider}
+              searchProviders={searchProviders}
+              onSearchProviderChange={setPickedProvider}
               onSend={(text) => void send(text)}
               onStop={() => abortRef.current?.abort()}
               autoFocusKey={conversationId ?? 'new'}
@@ -312,6 +351,9 @@ export function ChatPage() {
             )}
             <Composer
               streaming={streaming}
+              searchProvider={searchProvider}
+              searchProviders={searchProviders}
+              onSearchProviderChange={setPickedProvider}
               onSend={(text) => void send(text)}
               onStop={() => abortRef.current?.abort()}
               autoFocusKey={conversationId ?? 'new'}

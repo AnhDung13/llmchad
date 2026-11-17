@@ -13,6 +13,11 @@
   "copied": "Đã chép",
   "copyMessage": "Chép tin nhắn",
   "scrollToBottom": "Cuộn xuống cuối",
+  "webSearchMenu": "Chọn cách tìm trên web",
+  "webSearchNone": "Không tìm trên web",
+  "webSearchWith": "Tìm trên web bằng {{provider}}",
+  "searching": "Đang tìm: {{query}}",
+  "sources": "Nguồn",
   "markdown": {
     "copyCode": "Chép code",
     "copied": "Đã chép",

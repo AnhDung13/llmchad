@@ -1,9 +1,19 @@
-import { ArrowUpIcon, SquareIcon } from 'lucide-react'
+import { ArrowUpIcon, CheckIcon, GlobeIcon, SquareIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { SearchProvider } from '../lib/types'
+import { Menu } from '../ui/Menu'
+
+/** Tên thương hiệu, không dịch */
+const PROVIDER_NAMES: Record<SearchProvider, string> = { tavily: 'Tavily', tinyfish: 'TinyFish' }
 
 type Props = {
   streaming: boolean
+  /** Provider web search đang chọn; null = không tìm trên web */
+  searchProvider: SearchProvider | null
+  /** Các provider backend đã có API key. Rỗng thì ẩn nút web search */
+  searchProviders: SearchProvider[]
+  onSearchProviderChange(provider: SearchProvider | null): void
   onSend(text: string): void
   onStop(): void
   autoFocusKey?: string | number
@@ -11,7 +21,16 @@ type Props = {
   showHint?: boolean
 }
 
-export function Composer({ streaming, onSend, onStop, autoFocusKey, showHint = true }: Props) {
+export function Composer({
+  streaming,
+  searchProvider,
+  searchProviders,
+  onSearchProviderChange,
+  onSend,
+  onStop,
+  autoFocusKey,
+  showHint = true,
+}: Props) {
   const { t } = useTranslation('thread')
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -62,6 +81,36 @@ export function Composer({ streaming, onSend, onStop, autoFocusKey, showHint = t
           aria-label={t('inputLabel')}
           className="block max-h-[200px] min-w-0 flex-1 resize-none self-center bg-transparent py-1.5 text-base outline-none placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
         />
+        {searchProviders.length > 0 && (
+          // Chặn click lan lên khung ngoài: khung đó focus ô nhập, làm menu vừa mở bị đóng
+          <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+            <Menu
+              label={searchProvider ? t('webSearchWith', { provider: PROVIDER_NAMES[searchProvider] }) : t('webSearchMenu')}
+              side="top"
+              align="start"
+              trigger={
+                <>
+                  <GlobeIcon size={17} />
+                  {searchProvider && <span className="hidden sm:inline">{PROVIDER_NAMES[searchProvider]}</span>}
+                </>
+              }
+              triggerClassName={`flex h-9 items-center gap-1.5 rounded-full px-2.5 text-sm transition outline-none focus-visible:ring-2 focus-visible:ring-violet-300 ${
+                searchProvider
+                  ? 'bg-violet-100 text-violet-700 hover:bg-violet-200/70 dark:bg-violet-500/20 dark:text-violet-200 dark:hover:bg-violet-500/30'
+                  : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-night-700 dark:hover:text-neutral-100'
+              }`}
+              items={[
+                { id: null, label: t('webSearchNone') },
+                ...searchProviders.map((p) => ({ id: p, label: t('webSearchWith', { provider: PROVIDER_NAMES[p] }) })),
+              ].map((o) => ({
+                label: o.label,
+                // Ô trống cùng cỡ để chữ các lựa chọn thẳng hàng
+                icon: o.id === searchProvider ? <CheckIcon size={15} /> : <span className="w-[15px]" />,
+                onSelect: () => onSearchProviderChange(o.id),
+              }))}
+            />
+          </div>
+        )}
         {streaming ? (
           <button
             type="button"

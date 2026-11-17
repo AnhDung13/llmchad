@@ -13,6 +13,11 @@
   "copied": "Copied",
   "copyMessage": "Copy message",
   "scrollToBottom": "Scroll to bottom",
+  "webSearchMenu": "Choose web search",
+  "webSearchNone": "No web search",
+  "webSearchWith": "Search the web with {{provider}}",
+  "searching": "Searching: {{query}}",
+  "sources": "Sources",
   "markdown": {
     "copyCode": "Copy code",
     "copied": "Copied",

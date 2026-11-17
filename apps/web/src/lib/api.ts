@@ -9,6 +9,8 @@ import type {
   LoginInput,
   LoginResponse,
   Message,
+  SearchProvider,
+  Source,
   RegisterInput,
   ResetLinkSentResponse,
   User,
@@ -75,9 +77,18 @@ export const api = {
   listMessages: (conversationId: string, signal?: AbortSignal) =>
     json<Message[]>(`conversations/${conversationId}/messages`, { signal }),
 
-  async *sendMessage(conversationId: string, content: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  /** Các provider web search backend đã có API key */
+  listSearchProviders: (signal?: AbortSignal) => json<SearchProvider[]>('search/providers', { signal }),
+
+  /** searchProvider null = không cho model tìm trên web */
+  async *sendMessage(
+    conversationId: string,
+    content: string,
+    searchProvider: SearchProvider | null,
+    signal: AbortSignal,
+  ): AsyncGenerator<ChatEvent> {
     const res = await request(`conversations/${conversationId}/stream`, {
-      ...post({ content }),
+      ...post({ content, searchProvider }),
       headers: { Accept: 'text/event-stream, application/json' },
       signal,
       // LLM có thể trả lời lâu: không giới hạn thời gian chờ
@@ -96,6 +107,10 @@ export const api = {
     for await (const ev of readSse(res.body)) {
       if (ev.event === 'reasoning' || ev.event === 'delta') {
         yield { type: ev.event, text: (JSON.parse(ev.data) as { text: string }).text }
+      } else if (ev.event === 'search') {
+        yield { type: 'search', query: (JSON.parse(ev.data) as { query: string }).query }
+      } else if (ev.event === 'sources') {
+        yield { type: 'sources', sources: (JSON.parse(ev.data) as { sources: Source[] }).sources }
       } else if (ev.event === 'done') {
         yield { type: 'done', message: JSON.parse(ev.data) as Message }
         return
