@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Streamdown, defaultComponents, type Components, type ExtraProps, type StreamdownTranslations } from 'streamdown'
 import { CITE_TITLE_PREFIX, linkCitations } from '../lib/citations'
 import type { Source } from '../lib/types'
+import { Favicon } from './Favicon'
 
 // Streamdown thay cho react-markdown: tự đóng tạm markdown dở dang khi đang stream (không lộ `**`,
 // khối ``` chưa đóng không nuốt phần sau), chỉ render lại block cuối, tô màu code bằng Shiki.
@@ -64,9 +65,10 @@ function Link({ sources, ...props }: LinkProps & { sources?: Source[] }) {
       target="_blank"
       rel="noopener noreferrer"
       title={source?.title || href}
-      className="mx-0.5 inline-flex max-w-[14rem] -translate-y-px items-center truncate rounded-full bg-neutral-200/70 px-2 py-px align-middle text-xs leading-5 font-medium text-neutral-600 no-underline transition hover:bg-violet-100 hover:text-violet-800 dark:bg-night-700 dark:text-neutral-300 dark:hover:bg-violet-500/20 dark:hover:text-violet-100"
+      className="ml-0.5 inline-flex max-w-[14rem] -translate-y-px items-center gap-1 rounded-full bg-neutral-200/70 py-px pr-2 pl-1 align-middle text-xs leading-5 font-medium text-neutral-600 no-underline transition hover:bg-violet-100 hover:text-violet-800 dark:bg-night-700 dark:text-neutral-300 dark:hover:bg-violet-500/20 dark:hover:text-violet-100"
     >
-      {children}
+      {href && <Favicon url={href} size={14} />}
+      <span className="truncate">{children}</span>
     </a>
   )
 }

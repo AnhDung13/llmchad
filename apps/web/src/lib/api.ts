@@ -109,6 +109,8 @@ export const api = {
         yield { type: ev.event, text: (JSON.parse(ev.data) as { text: string }).text }
       } else if (ev.event === 'search') {
         yield { type: 'search', query: (JSON.parse(ev.data) as { query: string }).query }
+      } else if (ev.event === 'title') {
+        yield { type: 'title', title: (JSON.parse(ev.data) as { title: string }).title }
       } else if (ev.event === 'sources') {
         yield { type: 'sources', sources: (JSON.parse(ev.data) as { sources: Source[] }).sources }
       } else if (ev.event === 'done') {
